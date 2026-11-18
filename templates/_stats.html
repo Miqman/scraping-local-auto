@@ -1,0 +1,25 @@
+<div id="stats-row" class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-6"
+  hx-get="/partials/stats" hx-trigger="every 2s" hx-target="this" hx-swap="outerHTML">
+  {% set cards = [
+    ('queued', 'Antri', 'clock', 'text-neutral-badge', 'bg-neutral-badge-bg'),
+    ('running', 'Berjalan', 'loader-circle', 'text-primary', 'bg-primary-subtle'),
+    ('waiting_user', 'Menunggu User', 'hand', 'text-warning', 'bg-warning-bg'),
+    ('done', 'Selesai', 'circle-check', 'text-success', 'bg-success-bg'),
+    ('partial', 'Parsial', 'triangle-alert', 'text-warning', 'bg-warning-bg'),
+    ('failed', 'Gagal', 'circle-x', 'text-danger', 'bg-danger-bg')
+  ] %}
+  {% for key, label, icon, tone, bg in cards %}
+  <button type="button" data-status="{{ key }}"
+    hx-get="/partials/jobs" hx-vals='{"status": "{{ key }}"}'
+    hx-include="#job-filters" hx-target="#jobs-table" hx-swap="outerHTML"
+    class="stat-card card p-4 text-left hover:border-primary/40 transition-colors cursor-pointer group">
+    <div class="flex items-center justify-between mb-2.5">
+      <span class="overline text-[10px]">{{ label }}</span>
+      <span class="w-7 h-7 rounded-control {{ bg }} {{ tone }} flex items-center justify-center">
+        <i data-lucide="{{ icon }}" class="w-3.5 h-3.5 {% if key == 'running' and stats[key] > 0 %}animate-spin{% endif %}"></i>
+      </span>
+    </div>
+    <div class="text-[24px] font-bold tabular-nums leading-none {{ tone if stats[key] > 0 else 'text-ink' }}">{{ stats[key] }}</div>
+  </button>
+  {% endfor %}
+</div>

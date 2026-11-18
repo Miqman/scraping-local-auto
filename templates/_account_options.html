@@ -1,0 +1,7 @@
+<option value="">Pilih akun…</option>
+{% for a in accounts %}
+<option value="{{ a.id }}" {% if selected_account_id is defined and a.id == selected_account_id %}selected{% endif %}>{{ a.label }} · {{ a.username }}</option>
+{% endfor %}
+{% if not accounts %}
+<option value="" disabled>Belum ada akun untuk POS ini — tambah dulu</option>
+{% endif %}

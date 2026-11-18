@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Akun Merchant{% endblock %}
+{% block breadcrumb %}
+<a href="/" class="text-muted hover:text-ink transition-colors">Workspace</a>
+<span class="text-hairline">/</span>
+<span class="font-semibold text-ink">Akun Merchant</span>
+{% endblock %}
+{% block content %}
+<div class="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
+  <div>
+    <div class="overline mb-1">Konfigurasi · Kredensial</div>
+    <h1 class="text-[28px] font-bold text-ink tracking-[-0.02em] leading-tight">Akun Merchant</h1>
+    <p class="mt-1.5 text-[14px] text-muted max-w-xl leading-relaxed">
+      Simpan akun POS sekali — password terenkripsi AES-256-GCM, kunci di OS keychain.
+      Password write-only: tidak pernah ditampilkan ulang.
+    </p>
+  </div>
+  <button type="button" class="btn-primary shrink-0"
+    hx-get="/accounts/modal" hx-target="#modal-root" hx-swap="innerHTML">
+    <i data-lucide="plus" class="w-4 h-4"></i> Tambah Akun
+  </button>
+</div>
+
+<div hx-get="/partials/accounts" hx-trigger="refreshAccounts from:body" hx-target="this" hx-swap="outerHTML">
+  {% include "_accounts_table.html" %}
+</div>
+{% endblock %}

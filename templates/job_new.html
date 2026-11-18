@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Job Baru{% endblock %}
+{% block breadcrumb %}
+<a href="/" class="text-muted hover:text-ink transition-colors">Workspace</a>
+<span class="text-hairline">/</span>
+<span class="font-semibold text-ink">Job Baru</span>
+{% endblock %}
+{% block content %}
+<div class="mb-6">
+  <div class="overline mb-1">Workspace · Jalankan Scraping</div>
+  <h1 class="text-[28px] font-bold text-ink tracking-[-0.02em] leading-tight">Job Baru</h1>
+  <p class="mt-1.5 text-[14px] text-muted max-w-xl leading-relaxed">
+    Pilih POS, akun, rentang tanggal, dan cabang. Browser terbuka headed — bila muncul captcha/OTP,
+    selesaikan sekali dan aplikasi lanjut sendiri.
+  </p>
+</div>
+
+<div class="grid lg:grid-cols-3 gap-6 items-start">
+  <div class="lg:col-span-2">
+    {% include "_job_form.html" %}
+  </div>
+  <aside class="card p-5 space-y-4">
+    <div class="overline">Cara kerja</div>
+    {% set steps = [
+      ('mouse-pointer-click', 'Pilih & jalankan', 'Job masuk antrian. Maks 2 job paralel; akun yang sama diserialkan (antri).'),
+      ('app-window', 'Browser headed terbuka', 'Camoufox tampil di layar dengan profil khusus akun ini — bisa ditonton.'),
+      ('hand', 'Captcha? Selesaikan sekali', 'Status MENUNGGU USER muncul. Selesaikan di browser; aplikasi lanjut otomatis ≤5 detik. Timeout 10 menit.'),
+      ('file-spreadsheet', 'Export Excel', 'Hasil per cabang tersimpan walau ada yang gagal. Retry hanya cabang gagal, lalu export.')
+    ] %}
+    <ol class="space-y-3.5">
+      {% for icon, title, desc in steps %}
+      <li class="flex gap-3">
+        <span class="w-7 h-7 rounded-control bg-primary-subtle text-primary flex items-center justify-center shrink-0 mt-0.5">
+          <i data-lucide="{{ icon }}" class="w-3.5 h-3.5"></i>
+        </span>
+        <div>
+          <div class="text-[13px] font-semibold text-ink leading-snug">{{ title }}</div>
+          <p class="text-[12px] text-muted leading-relaxed mt-0.5">{{ desc }}</p>
+        </div>
+      </li>
+      {% endfor %}
+    </ol>
+    <div class="pt-3 border-t border-hairline text-[11px] text-subtle leading-relaxed">
+      Rentang panjang dipecah otomatis sesuai batas POS (chunking). Tanggal mengikuti zona waktu akun POS.
+    </div>
+  </aside>
+</div>
+{% endblock %}

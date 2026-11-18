@@ -1,0 +1,15 @@
+# runtime data (DB, profil browser, export, keyfile fallback)
+data/
+data-acceptance/
+data-acceptance-run.log
+# kredensial merchant plaintext dari tim — jangan pernah commit
+akun-siberpos.txt
+akun-majoo.txt
+# dev-only build tooling
+node_modules/
+__pycache__/
+*.pyc
+.piptest/
+# referensi desain owner (aset sumber, bukan bagian runtime)
+gemini-code-*.html
+gemini-code-*.md

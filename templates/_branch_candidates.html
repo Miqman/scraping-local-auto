@@ -1,0 +1,18 @@
+{% if known %}
+<div class="space-y-1.5">
+  {% for b in known %}
+  <label class="flex items-center gap-3 px-3 py-2.5 rounded-control border border-hairline cursor-pointer transition-colors has-[:checked]:bg-primary-subtle has-[:checked]:border-primary/30 hover:bg-surface-hover">
+    <input type="checkbox" name="branches" value="{{ b.branch_key }}|{{ b.branch_name }}" checked
+      class="w-4 h-4 rounded accent-primary cursor-pointer">
+    <span class="font-mono text-[12px] text-muted">{{ b.branch_key }}</span>
+    <span class="text-[13px] font-medium text-ink">{{ b.branch_name }}</span>
+  </label>
+  {% endfor %}
+</div>
+<p class="mt-2 text-[11px] text-subtle">Cabang tersimpan dari job sebelumnya — centang yang ingin ditarik.</p>
+{% else %}
+<div class="rounded-control border border-dashed border-hairline bg-canvas/60 px-4 py-3.5 text-[13px] text-muted leading-relaxed">
+  Belum ada cabang tersimpan untuk akun ini. Biarkan kosong → daftar cabang di-fetch otomatis setelah login pertama
+  (bila POS punya API cabang), atau tambah manual di bawah.
+</div>
+{% endif %}

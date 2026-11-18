@@ -1,0 +1,97 @@
+<section id="job-form-card" class="card p-6">
+  {% if error %}
+  <div class="mb-5 flex items-start gap-3 rounded-control border border-danger/30 bg-danger-bg px-4 py-3">
+    <i data-lucide="circle-alert" class="w-4 h-4 text-danger mt-0.5 shrink-0"></i>
+    <p class="text-[13px] text-ink font-medium">{{ error }}</p>
+  </div>
+  {% endif %}
+  <form hx-post="/jobs" hx-target="#job-form-card" hx-swap="outerHTML" class="space-y-5">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <div class="grid sm:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-xs font-semibold text-ink mb-1.5" for="pos-select">POS</label>
+        <div class="relative">
+          <select id="pos-select" class="control w-full pl-3 pr-8 appearance-none cursor-pointer font-medium"
+            hx-get="/partials/account-options" hx-trigger="change" hx-target="#account-select" hx-swap="innerHTML"
+            hx-vals='js:{pos: document.getElementById("pos-select").value}'>
+            {% for p in pos_list %}
+            <option value="{{ p.code }}" {% if p.code == selected_pos %}selected{% endif %} {% if not p.available %}disabled{% endif %}>
+              {{ p.name }}{% if not p.available %} — {{ p.milestone }}{% endif %}
+            </option>
+            {% endfor %}
+          </select>
+          <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-muted absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+        </div>
+        <p class="mt-1.5 text-[11px] text-subtle">POS pain lain menyusul di M1 (terdaftar sebagai jaga-jaga).</p>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-ink mb-1.5" for="account-select">Akun merchant</label>
+        <div class="relative">
+          <select id="account-select" name="account_id" required
+            class="control w-full pl-3 pr-8 appearance-none cursor-pointer font-medium"
+            hx-get="/partials/branch-candidates" hx-trigger="change" hx-target="#branch-candidates" hx-swap="innerHTML"
+            hx-vals='js:{account_id: document.getElementById("account-select").value}'>
+            {% include "_account_options.html" %}
+          </select>
+          <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-muted absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+        </div>
+        <p class="mt-1.5 text-[11px] text-subtle">Terfilter POS terpilih. <a href="/accounts" class="text-primary hover:underline">Kelola akun →</a></p>
+      </div>
+    </div>
+
+    <div class="grid sm:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-xs font-semibold text-ink mb-1.5" for="date-from">Dari tanggal</label>
+        <input id="date-from" name="date_from" type="date" required class="control w-full px-3 tabular-nums cursor-pointer"
+          value="{{ form.date_from if form else default_from }}">
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-ink mb-1.5" for="date-to">Sampai tanggal</label>
+        <input id="date-to" name="date_to" type="date" required class="control w-full px-3 tabular-nums cursor-pointer"
+          value="{{ form.date_to if form else default_to }}">
+      </div>
+    </div>
+
+    <div>
+      <div class="flex items-center justify-between mb-1.5">
+        <label class="block text-xs font-semibold text-ink">Cabang</label>
+        <span class="text-[11px] text-subtle">kosong = auto-fetch setelah login pertama</span>
+      </div>
+      <div id="branch-candidates">
+        {% include "_branch_candidates.html" %}
+      </div>
+      <div id="manual-branches" class="space-y-1.5 mt-1.5">
+        {% if form %}
+        {% for raw in form.branches %}
+        {% if '|' in raw %}
+        {% set parts = raw.split('|', 1) %}
+        <label class="flex items-center gap-3 px-3 py-2.5 rounded-control border border-hairline cursor-pointer transition-colors has-[:checked]:bg-primary-subtle has-[:checked]:border-primary/30 hover:bg-surface-hover">
+          <input type="checkbox" name="branches" value="{{ raw }}" checked class="w-4 h-4 accent-primary cursor-pointer">
+          <span class="font-mono text-[12px] text-muted">{{ parts[0] }}</span>
+          <span class="text-[13px] font-medium text-ink">{{ parts[1] or parts[0] }}</span>
+        </label>
+        {% endif %}
+        {% endfor %}
+        {% endif %}
+      </div>
+      <div class="mt-2.5 flex flex-col sm:flex-row gap-2.5">
+        <input id="manual-key" type="text" placeholder="Key cabang (mis. outlet-01)" class="control flex-1 px-3 font-mono text-[12px]">
+        <input id="manual-name" type="text" placeholder="Nama cabang (opsional)" class="control flex-1 px-3">
+        <button type="button" onclick="addManualBranch()" class="btn-secondary shrink-0">
+          <i data-lucide="plus" class="w-3.5 h-3.5"></i> Tambah manual
+        </button>
+      </div>
+      <p class="mt-1.5 text-[11px] text-subtle leading-snug">Input manual = fallback bila POS tidak punya API cabang / fetch gagal (E14).</p>
+    </div>
+
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-4 border-t border-hairline">
+      <p class="text-[12px] text-muted leading-snug flex items-center gap-2">
+        <i data-lucide="info" class="w-3.5 h-3.5 shrink-0 text-subtle"></i>
+        Job dengan akun sama tidak berjalan bersamaan — job kedua berstatus antri.
+      </p>
+      <button type="submit" class="btn-primary shrink-0 px-5">
+        <i data-lucide="play" class="w-4 h-4"></i> Jalankan
+      </button>
+    </div>
+  </form>
+</section>

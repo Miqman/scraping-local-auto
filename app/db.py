@@ -1,0 +1,471 @@
+"""SQLite WAL — sumber kebenaran status (PRD §9). Koneksi per operasi."""
+import sqlite3
+import threading
+from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
+from typing import Optional
+
+from .paths import db_path
+
+_local = threading.local()
+_write_lock = threading.Lock()
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS accounts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    pos_code TEXT NOT NULL,
+    label TEXT NOT NULL,
+    username TEXT NOT NULL,
+    password_enc BLOB NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE RESTRICT,
+    pos_code TEXT NOT NULL,
+    date_from TEXT NOT NULL,
+    date_to TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'queued',
+    created_at TEXT NOT NULL,
+    finished_at TEXT
+);
+CREATE TABLE IF NOT EXISTS job_branches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+    branch_key TEXT NOT NULL,
+    branch_name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    trx_count INTEGER NOT NULL DEFAULT 0,
+    error TEXT,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS transactions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_branch_id INTEGER NOT NULL REFERENCES job_branches(id) ON DELETE CASCADE,
+    trx_id TEXT NOT NULL,
+    trx_date TEXT NOT NULL,
+    grand_total REAL,
+    total_price REAL,
+    total_tax REAL,
+    raw_json TEXT NOT NULL,
+    UNIQUE(job_branch_id, trx_id)
+);
+CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
+CREATE INDEX IF NOT EXISTS idx_branches_job ON job_branches(job_id);
+CREATE INDEX IF NOT EXISTS idx_trx_branch ON transactions(job_branch_id);
+"""
+
+JOB_ACTIVE = ("queued", "running", "waiting_user")
+BRANCH_ACTIVE = ("pending", "running", "waiting_user")
+
+
+def now() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+@contextmanager
+def conn():
+    """Koneksi per operasi; WAL mengizinkan baca saat tulis."""
+    c = sqlite3.connect(db_path(), timeout=30)
+    c.row_factory = sqlite3.Row
+    c.execute("PRAGMA foreign_keys = ON")
+    try:
+        yield c
+        c.commit()
+    except Exception:
+        c.rollback()
+        raise
+    finally:
+        c.close()
+
+
+def init() -> None:
+    with conn() as c:
+        c.execute("PRAGMA journal_mode = WAL")
+        c.executescript(SCHEMA)
+        # Token sesi per akun (padanan langkah wajib "token ke DB cartenz" di referensi Java Majoo)
+        c.execute("CREATE TABLE IF NOT EXISTS sessions ("
+                  "account_id INTEGER PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,"
+                  "token_enc BLOB NOT NULL, updated_at TEXT NOT NULL)")
+
+
+def recover_interrupted() -> int:
+    """E5: job/cabang aktif saat proses mati -> failed [interrupted]. Data committed tetap utuh."""
+    ts = now()
+    with conn() as c:
+        jobs = c.execute(
+            "SELECT id FROM jobs WHERE status IN ('queued','running','waiting_user')"
+        ).fetchall()
+        for j in jobs:
+            c.execute(
+                "UPDATE job_branches SET status='failed', error='[interrupted] Aplikasi tertutup saat job berjalan; data cabang selesai tetap tersimpan. Retry untuk melanjutkan.', updated_at=? "
+                "WHERE job_id=? AND status IN ('pending','running','waiting_user')",
+                (ts, j["id"]),
+            )
+            c.execute(
+                "UPDATE jobs SET status='failed', finished_at=? WHERE id=?", (ts, j["id"])
+            )
+        return len(jobs)
+
+
+def purge_old_jobs(days: int = 90) -> int:
+    """E18: retensi 90 hari, cascade. Akun tidak pernah dihapus otomatis."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+    with conn() as c:
+        cur = c.execute("DELETE FROM jobs WHERE created_at < ?", (cutoff,))
+        return cur.rowcount
+
+
+# ---------- accounts ----------
+
+def create_account(pos_code: str, label: str, username: str, password_enc: bytes) -> int:
+    ts = now()
+    with conn() as c:
+        cur = c.execute(
+            "INSERT INTO accounts(pos_code,label,username,password_enc,created_at,updated_at) VALUES(?,?,?,?,?,?)",
+            (pos_code, label, username, password_enc, ts, ts),
+        )
+        return cur.lastrowid
+
+
+def update_account(account_id: int, label: str, username: str,
+                   password_enc: Optional[bytes] = None) -> None:
+    ts = now()
+    with conn() as c:
+        if password_enc is not None:
+            c.execute(
+                "UPDATE accounts SET label=?, username=?, password_enc=?, updated_at=? WHERE id=?",
+                (label, username, password_enc, ts, account_id),
+            )
+        else:
+            c.execute(
+                "UPDATE accounts SET label=?, username=?, updated_at=? WHERE id=?",
+                (label, username, ts, account_id),
+            )
+
+
+def get_account(account_id: int) -> Optional[sqlite3.Row]:
+    with conn() as c:
+        return c.execute("SELECT * FROM accounts WHERE id=?", (account_id,)).fetchone()
+
+
+def list_accounts() -> list:
+    with conn() as c:
+        return c.execute("SELECT * FROM accounts ORDER BY pos_code, label").fetchall()
+
+
+def account_has_jobs(account_id: int) -> bool:
+    with conn() as c:
+        r = c.execute("SELECT 1 FROM jobs WHERE account_id=? LIMIT 1", (account_id,)).fetchone()
+        return r is not None
+
+
+def delete_account(account_id: int) -> None:
+    with conn() as c:
+        c.execute("DELETE FROM accounts WHERE id=?", (account_id,))
+
+
+# ---------- jobs ----------
+
+def create_job(account_id: int, pos_code: str, date_from: str, date_to: str,
+               branches: list) -> int:
+    """branches: list (key, name); kosong = auto-fetch setelah login (PRD §6, E14)."""
+    ts = now()
+    with conn() as c:
+        cur = c.execute(
+            "INSERT INTO jobs(account_id,pos_code,date_from,date_to,status,created_at) VALUES(?,?,?,?, 'queued', ?)",
+            (account_id, pos_code, date_from, date_to, ts),
+        )
+        job_id = cur.lastrowid
+        for key, name in branches:
+            c.execute(
+                "INSERT INTO job_branches(job_id,branch_key,branch_name,status,updated_at) VALUES(?,?,?,'pending',?)",
+                (job_id, key, name, ts),
+            )
+        return job_id
+
+
+def get_job(job_id: int) -> Optional[sqlite3.Row]:
+    with conn() as c:
+        return c.execute(
+            "SELECT j.*, a.label AS account_label, a.username AS account_username "
+            "FROM jobs j JOIN accounts a ON a.id=j.account_id WHERE j.id=?",
+            (job_id,),
+        ).fetchone()
+
+
+def get_branches(job_id: int) -> list:
+    with conn() as c:
+        return c.execute(
+            "SELECT * FROM job_branches WHERE job_id=? ORDER BY id", (job_id,)
+        ).fetchall()
+
+
+def get_branch(branch_id: int) -> Optional[sqlite3.Row]:
+    with conn() as c:
+        return c.execute("SELECT * FROM job_branches WHERE id=?", (branch_id,)).fetchone()
+
+
+def set_job_status(job_id: int, status: str) -> None:
+    ts = now()
+    finished = ts if status in ("done", "partial", "failed") else None
+    with conn() as c:
+        c.execute(
+            "UPDATE jobs SET status=?, finished_at=? WHERE id=?",
+            (status, finished, job_id),
+        )
+
+
+def refresh_job_status(job_id: int, executing: bool = False) -> str:
+    """Status job diturunkan dari cabang; DB = sumber kebenaran.
+    executing=True: eksekusi masih hidup (teardown) -> status terminal ditahan
+    agar retry tidak balapan dengan finally run_job."""
+    with conn() as c:
+        rows = c.execute(
+            "SELECT status FROM job_branches WHERE job_id=?", (job_id,)
+        ).fetchall()
+        statuses = [r["status"] for r in rows]
+        if not statuses:
+            return "queued"  # menunggu auto-fetch cabang
+        if "running" in statuses or "pending" in statuses:
+            status = "running"
+        elif "waiting_user" in statuses:
+            status = "waiting_user"
+        elif all(s == "done" for s in statuses):
+            status = "done"
+        elif all(s == "failed" for s in statuses):
+            status = "failed"
+        else:
+            status = "partial"
+        if executing and status in ("done", "partial", "failed"):
+            status = "running"
+        ts = now()
+        finished = ts if status in ("done", "partial", "failed") else None
+        c.execute(
+            "UPDATE jobs SET status=?, finished_at=? WHERE id=?",
+            (status, finished, job_id),
+        )
+        return status
+
+
+def set_branch_status(branch_id: int, status: str, error: Optional[str] = None,
+                      attempts: Optional[int] = None, trx_count: Optional[int] = None,
+                      executing: bool = False) -> None:
+    ts = now()
+    with conn() as c:
+        sets = ["status=?", "updated_at=?"]
+        vals = [status, ts]
+        if error is not None:
+            sets.append("error=?")
+            vals.append(error)
+        if attempts is not None:
+            sets.append("attempts=?")
+            vals.append(attempts)
+        if trx_count is not None:
+            sets.append("trx_count=?")
+            vals.append(trx_count)
+        vals.append(branch_id)
+        c.execute(f"UPDATE job_branches SET {', '.join(sets)} WHERE id=?", vals)
+        job_id = c.execute("SELECT job_id FROM job_branches WHERE id=?", (branch_id,)).fetchone()["job_id"]
+    refresh_job_status(job_id, executing=executing)
+
+
+def insert_branches(job_id: int, branches: list) -> None:
+    ts = now()
+    with conn() as c:
+        for key, name in branches:
+            c.execute(
+                "INSERT INTO job_branches(job_id,branch_key,branch_name,status,updated_at) VALUES(?,?,?,'pending',?)",
+                (job_id, key, name, ts),
+            )
+
+
+def queued_jobs(exclude_account_ids: set, limit: int) -> list:
+    if limit <= 0:
+        return []
+    with conn() as c:
+        rows = c.execute(
+            "SELECT * FROM jobs WHERE status='queued' ORDER BY id"
+        ).fetchall()
+    out = []
+    for r in rows:
+        if r["account_id"] in exclude_account_ids:
+            continue
+        out.append(r)
+        exclude_account_ids.add(r["account_id"])
+        if len(out) >= limit:
+            break
+    return out
+
+
+def active_jobs() -> list:
+    with conn() as c:
+        return c.execute(
+            "SELECT * FROM jobs WHERE status IN ('running','waiting_user') ORDER BY id"
+        ).fetchall()
+
+
+def job_stats() -> dict:
+    with conn() as c:
+        rows = c.execute("SELECT status, COUNT(*) n FROM jobs GROUP BY status").fetchall()
+    stats = {s: 0 for s in ("queued", "running", "waiting_user", "done", "partial", "failed")}
+    for r in rows:
+        stats[r["status"]] = r["n"]
+    return stats
+
+
+def list_jobs(q: str = "", status: str = "", pos: str = "", date_from: str = "",
+              date_to: str = "", sort: str = "id", direction: str = "desc",
+              page: int = 1, page_size: int = 10) -> dict:
+    sort_col = {"id": "j.id", "created_at": "j.created_at", "status": "j.status",
+                "branches": "done_count"}.get(sort, "j.id")
+    direction = "ASC" if direction == "asc" else "DESC"
+    where, vals = [], []
+    if q:
+        where.append("(a.label LIKE ? OR j.pos_code LIKE ? OR CAST(j.id AS TEXT) LIKE ?)")
+        vals += [f"%{q}%"] * 3
+    if status:
+        where.append("j.status = ?")
+        vals.append(status)
+    if pos:
+        where.append("j.pos_code = ?")
+        vals.append(pos)
+    if date_from:
+        where.append("j.date_to >= ?")
+        vals.append(date_from)
+    if date_to:
+        where.append("j.date_from <= ?")
+        vals.append(date_to)
+    w = ("WHERE " + " AND ".join(where)) if where else ""
+    with conn() as c:
+        total = c.execute(
+            f"SELECT COUNT(*) n FROM jobs j JOIN accounts a ON a.id=j.account_id {w}", vals
+        ).fetchone()["n"]
+        pages = max(1, (total + page_size - 1) // page_size)
+        page = max(1, min(page, pages))
+        rows = c.execute(
+            f"SELECT j.*, a.label AS account_label, "
+            f"(SELECT COUNT(*) FROM job_branches b WHERE b.job_id=j.id) AS branch_total, "
+            f"(SELECT COUNT(*) FROM job_branches b WHERE b.job_id=j.id AND b.status='done') AS done_count "
+            f"FROM jobs j JOIN accounts a ON a.id=j.account_id {w} "
+            f"ORDER BY {sort_col} {direction}, j.id DESC LIMIT ? OFFSET ?",
+            vals + [page_size, (page - 1) * page_size],
+        ).fetchall()
+    return {"rows": rows, "total": total, "page": page, "pages": pages,
+            "page_size": page_size}
+
+
+def delete_job(job_id: int) -> None:
+    with conn() as c:
+        c.execute("DELETE FROM jobs WHERE id=?", (job_id,))
+
+
+# ---------- transactions ----------
+
+def upsert_transactions(branch_id: int, rows: list) -> int:
+    """UNIQUE(job_branch_id,trx_id) + upsert -> retry tidak mendobel (E10, W3)."""
+    import json
+    inserted = 0
+    with _write_lock, conn() as c:
+        for r in rows:
+            raw = json.dumps(r, ensure_ascii=False, sort_keys=True)
+            cur = c.execute(
+                "INSERT INTO transactions(job_branch_id,trx_id,trx_date,grand_total,total_price,total_tax,raw_json) "
+                "VALUES(?,?,?,?,?,?,?) ON CONFLICT(job_branch_id,trx_id) DO UPDATE SET "
+                "trx_date=excluded.trx_date, grand_total=excluded.grand_total, "
+                "total_price=excluded.total_price, total_tax=excluded.total_tax, raw_json=excluded.raw_json",
+                (branch_id, str(r.get("trx_id")), str(r.get("trx_date", "")),
+                 _f(r.get("grand_total")), _f(r.get("total_price")), _f(r.get("total_tax")), raw),
+            )
+            inserted += cur.rowcount
+        c.execute(
+            "UPDATE job_branches SET trx_count=(SELECT COUNT(*) FROM transactions WHERE job_branch_id=?) WHERE id=?",
+            (branch_id, branch_id),
+        )
+    return inserted
+
+
+def _f(v):
+    try:
+        return float(v) if v is not None and v != "" else None
+    except (TypeError, ValueError):
+        return None
+
+
+def count_transactions(job_id: int) -> int:
+    with conn() as c:
+        return c.execute(
+            "SELECT COUNT(*) n FROM transactions t JOIN job_branches b ON b.id=t.job_branch_id WHERE b.job_id=?",
+            (job_id,),
+        ).fetchone()["n"]
+
+
+def preview_transactions(job_id: int, page: int = 1, page_size: int = 25) -> dict:
+    with conn() as c:
+        total = c.execute(
+            "SELECT COUNT(*) n FROM transactions t JOIN job_branches b ON b.id=t.job_branch_id WHERE b.job_id=?",
+            (job_id,),
+        ).fetchone()["n"]
+        pages = max(1, (total + page_size - 1) // page_size)
+        page = max(1, min(page, pages))
+        rows = c.execute(
+            "SELECT t.trx_id, t.trx_date, t.grand_total, t.total_tax, b.branch_name "
+            "FROM transactions t JOIN job_branches b ON b.id=t.job_branch_id "
+            "WHERE b.job_id=? ORDER BY t.trx_date, t.id LIMIT ? OFFSET ?",
+            (job_id, page_size, (page - 1) * page_size),
+        ).fetchall()
+    return {"rows": rows, "total": total, "page": page, "pages": pages}
+
+
+def iter_transaction_batches(job_id: int, batch_size: int = 500):
+    """E13: baca DB per batch (keyset), tidak memuat semua ke RAM."""
+    last = 0
+    while True:
+        with conn() as c:
+            rows = c.execute(
+                "SELECT t.id, t.trx_id, t.trx_date, t.raw_json, b.branch_name "
+                "FROM transactions t JOIN job_branches b ON b.id=t.job_branch_id "
+                "WHERE b.job_id=? AND t.id>? ORDER BY t.id LIMIT ?",
+                (job_id, last, batch_size),
+            ).fetchall()
+        if not rows:
+            return
+        for r in rows:
+            yield r
+        last = rows[-1]["id"]
+        if len(rows) < batch_size:
+            return
+
+
+def known_branches(account_id: int) -> list:
+    """Cabang dari job sebelumnya -> kandidat checkbox di Job Baru."""
+    with conn() as c:
+        return c.execute(
+            "SELECT b.branch_key, b.branch_name FROM job_branches b "
+            "JOIN jobs j ON j.id=b.job_id WHERE j.account_id=? "
+            "GROUP BY b.branch_key ORDER BY MAX(b.id) DESC",
+            (account_id,),
+        ).fetchall()
+
+
+def get_session_token(account_id: int):
+    with conn() as c:
+        r = c.execute("SELECT token_enc FROM sessions WHERE account_id=?", (account_id,)).fetchone()
+    return r["token_enc"] if r else None
+
+
+def save_session_token(account_id: int, token_enc: bytes) -> None:
+    ts = now()
+    with conn() as c:
+        c.execute("DELETE FROM sessions WHERE account_id=?", (account_id,))
+        c.execute("INSERT INTO sessions(account_id,token_enc,updated_at) VALUES(?,?,?)",
+                  (account_id, token_enc, ts))
+
+
+def delete_session_token(account_id: int) -> None:
+    with conn() as c:
+        c.execute("DELETE FROM sessions WHERE account_id=?", (account_id,))

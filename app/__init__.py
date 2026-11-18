@@ -1,0 +1,1 @@
+"""scraping-local-auto — aplikasi web localhost scraping transaksi POS (PRD M0)."""

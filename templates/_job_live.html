@@ -1,0 +1,205 @@
+{% import "macros.html" as m %}
+<div id="job-live" data-preview-page="{{ preview.page }}" class="space-y-6"
+  {% if active %}
+  hx-get="/partials/jobs/{{ job.id }}" hx-trigger="every 2s" hx-target="this" hx-swap="outerHTML"
+  hx-vals='js:{preview_page: document.getElementById("job-live").dataset.previewPage || 1}'
+  {% endif %}>
+
+  <!-- Baris status + aksi -->
+  <div class="card px-5 py-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+    <div class="flex items-center gap-3 flex-wrap">
+      {{ m.badge(job.status, job_label[job.status]) }}
+      <span class="text-[12px] text-muted tabular-nums">dibuat {{ m.fmt_dt(job.created_at) }}</span>
+      {% if job.finished_at %}<span class="text-[12px] text-muted tabular-nums">· selesai {{ m.fmt_dt(job.finished_at) }}</span>{% endif %}
+      <span class="text-[12px] text-subtle tabular-nums">· {{ trx_total }} transaksi di DB</span>
+    </div>
+    <div class="flex items-center gap-2.5 flex-wrap">
+      {% set has_errors = branches | selectattr('error') | list | length > 0 %}
+      {% if has_errors %}
+      <button type="button" class="btn-ghost px-3" data-copy="/jobs/{{ job.id }}/errors.txt" title="Redacted (S2) — aman dikirim ke developer">
+        <i data-lucide="copy" class="w-3.5 h-3.5"></i> Salin detail error
+      </button>
+      {% endif %}
+      {% if done_count > 0 %}
+      <a href="/jobs/{{ job.id }}/export" class="btn-secondary" title="Streaming dari raw_json — presisi uang exact">
+        <i data-lucide="download" class="w-3.5 h-3.5 text-muted"></i> Export Excel
+      </a>
+      {% else %}
+      <span class="btn-secondary opacity-50 cursor-not-allowed" title="Aktif setelah minimal satu cabang selesai (E12)">
+        <i data-lucide="download" class="w-3.5 h-3.5 text-muted"></i> Export Excel
+      </span>
+      {% endif %}
+      {% if can_retry_job %}
+      <button type="button" class="btn-primary"
+        hx-post="/jobs/{{ job.id }}/retry-all" hx-target="#job-live" hx-swap="outerHTML">
+        <i data-lucide="rotate-ccw" class="w-4 h-4"></i> {% if failed_retryable %}Retry semua gagal ({{ failed_retryable | length }}){% else %}Retry job (fetch ulang cabang){% endif %}
+      </button>
+      {% endif %}
+      <button type="button" class="btn-ghost px-2.5" title="Hapus job (cascade)"
+        hx-get="/jobs/{{ job.id }}/delete-confirm" hx-target="#modal-root" hx-swap="innerHTML">
+        <i data-lucide="trash-2" class="w-4 h-4"></i>
+      </button>
+    </div>
+  </div>
+
+  {% if job.status == 'queued' %}
+  <div class="rounded-card border border-hairline bg-neutral-badge-bg px-5 py-3.5 flex items-start gap-3">
+    <i data-lucide="clock" class="w-4 h-4 text-neutral-badge mt-0.5 shrink-0"></i>
+    <p class="text-[13px] text-ink leading-relaxed">
+      <span class="font-semibold">Antri</span> — akun sedang dipakai job lain (E6) atau batas 2 job paralel tercapai (E7).
+      Job mulai otomatis begitu slot tersedia; tidak perlu klik apa pun.
+    </p>
+  </div>
+  {% endif %}
+
+  <!-- Banner MENUNGGU USER (W2) -->
+  {% if job_waiting or waiting_branches %}
+  <div class="rounded-card border border-warning/40 bg-warning-bg px-5 py-4 flex flex-col sm:flex-row sm:items-center gap-4">
+    <div class="flex items-start gap-3 flex-1">
+      <span class="w-9 h-9 rounded-full bg-warning/15 text-warning flex items-center justify-center shrink-0">
+        <i data-lucide="hand" class="w-4.5 h-4.5 animate-pulse"></i>
+      </span>
+      <div>
+        <div class="text-[14px] font-bold text-warning tracking-tight">MENUNGGU USER</div>
+        <p class="text-[13px] text-ink leading-relaxed mt-0.5">
+          Selesaikan captcha/OTP di browser yang tampil ke depan. Aplikasi mendeteksi otomatis dan lanjut
+          <span class="font-semibold">≤5 detik</span> setelah lolos — tanpa klik apa pun.
+          Timeout 10 menit → cabang gagal <span class="font-mono text-[12px]">[user_timeout]</span>, job lanjut (E1).
+          {% if waiting_branches %}Cabang: <span class="font-semibold">{{ waiting_branches[0].branch_name }}</span>.{% endif %}
+        </p>
+      </div>
+    </div>
+    {% if waiting_branches %}
+    <button type="button" class="btn bg-warning hover:bg-amber-700 text-white shrink-0"
+      hx-post="/jobs/{{ job.id }}/branches/{{ waiting_branches[0].id }}/resume" hx-swap="none">
+      <i data-lucide="check" class="w-4 h-4"></i> Sudah selesai
+    </button>
+    {% else %}
+    <button type="button" class="btn bg-warning hover:bg-amber-700 text-white shrink-0"
+      hx-post="/jobs/{{ job.id }}/resume" hx-swap="none">
+      <i data-lucide="check" class="w-4 h-4"></i> Sudah selesai
+    </button>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- Tabel cabang -->
+  <section class="card overflow-hidden">
+    <div class="px-5 py-4 border-b border-hairline flex items-center justify-between gap-3">
+      <h2 class="text-[15px] font-semibold text-ink">Cabang <span class="text-muted font-normal tabular-nums">({{ done_count }}/{{ branches | length }} selesai)</span></h2>
+      <span class="text-[11px] text-subtle">maks 3 attempt · 2 auto re-login · auth tanpa auto-retry</span>
+    </div>
+    <div class="overflow-x-auto [contain:paint]">
+      <table class="w-full text-left border-collapse">
+        <thead>
+          <tr class="border-b border-hairline bg-canvas/60 text-[11px] font-semibold uppercase tracking-[0.05em] text-muted">
+            <th class="py-3 pl-5 pr-4">Cabang</th>
+            <th class="py-3 px-4">Status</th>
+            <th class="py-3 px-4 text-right">Transaksi</th>
+            <th class="py-3 px-4 text-center">Attempt</th>
+            <th class="py-3 px-4">Error</th>
+            <th class="py-3 pl-4 pr-5 text-right"><span class="sr-only">Aksi</span></th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-hairline text-[14px]">
+          {% for b in branches %}
+          <tr class="hover:bg-surface-hover transition-colors {{ 'bg-primary-subtle/40' if b.status == 'running' else '' }}">
+            <td class="py-3.5 pl-5 pr-4">
+              <div class="text-[13px] font-semibold text-ink leading-snug">{{ b.branch_name }}</div>
+              <div class="font-mono text-[11px] text-subtle">{{ b.branch_key }}</div>
+            </td>
+            <td class="py-3.5 px-4">{{ m.badge(b.status, branch_label[b.status]) }}</td>
+            <td class="py-3.5 px-4 text-right tabular-nums font-semibold text-ink">
+              {{ b.trx_count }}{% if b.status == 'done' and b.trx_count == 0 %}<span class="block text-[10px] font-medium text-subtle uppercase tracking-wide">kosong ≠ gagal</span>{% endif %}
+            </td>
+            <td class="py-3.5 px-4 text-center tabular-nums text-[13px] text-muted">{{ b.attempts }}/3</td>
+            <td class="py-3.5 px-4 max-w-[320px]">
+              {% if b.error %}
+              {% set code = b.error.split(']')[0][1:] if b.error.startswith('[') else 'unknown' %}
+              <div class="flex items-start gap-2">
+                <span class="font-mono text-[11px] font-semibold text-danger bg-danger-bg px-1.5 py-0.5 rounded shrink-0">{{ code }}</span>
+                <span class="text-[12px] text-muted leading-snug line-clamp-2" title="{{ b.error }}">{{ b.error }}</span>
+              </div>
+              {% else %}<span class="text-subtle text-[13px]">—</span>{% endif %}
+            </td>
+            <td class="py-3.5 pl-4 pr-5 text-right">
+              {% if b.status == 'failed' %}
+              <button type="button" {% if b.attempts >= 3 %}disabled title="Maks 3 attempt tercapai — hapus job atau buat job baru"{% else %}title="Retry hanya cabang ini (data sukses tidak diulang)"{% endif %}
+                hx-post="/jobs/{{ job.id }}/branches/{{ b.id }}/retry" hx-target="#job-live" hx-swap="outerHTML"
+                class="inline-flex items-center gap-1.5 h-8 px-3 rounded-control border border-hairline text-[12px] font-medium text-ink hover:bg-surface-hover disabled:text-subtle disabled:cursor-not-allowed transition-colors cursor-pointer">
+                <i data-lucide="rotate-ccw" class="w-3 h-3"></i> Retry
+              </button>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+          {% if not branches %}
+          <tr><td colspan="6" class="py-10 text-center text-[13px] text-muted">
+            <i data-lucide="git-branch" class="w-5 h-5 mx-auto mb-2 text-subtle"></i>
+            Cabang belum dibuat — di-fetch otomatis setelah login pertama, atau dari pilihan di Job Baru.
+          </td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Preview transaksi -->
+  <section class="card overflow-hidden">
+    <div class="px-5 py-4 border-b border-hairline flex items-center justify-between gap-3">
+      <h2 class="text-[15px] font-semibold text-ink">Preview Transaksi <span class="text-muted font-normal tabular-nums">({{ trx_total }})</span></h2>
+      <span class="text-[11px] text-subtle">sumber kebenaran: raw_json · preview dari kolom ringkas</span>
+    </div>
+    {% if preview.rows %}
+    <div class="overflow-x-auto [contain:paint]">
+      <table class="w-full text-left border-collapse">
+        <thead>
+          <tr class="border-b border-hairline bg-canvas/60 text-[11px] font-semibold uppercase tracking-[0.05em] text-muted">
+            <th class="py-3 pl-5 pr-4">trx_id</th>
+            <th class="py-3 px-4">Tanggal</th>
+            <th class="py-3 px-4">Cabang</th>
+            <th class="py-3 px-4 text-right">Grand Total</th>
+            <th class="py-3 pl-4 pr-5 text-right">Pajak</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-hairline text-[13px]">
+          {% for t in preview.rows %}
+          <tr class="hover:bg-surface-hover transition-colors">
+            <td class="py-3 pl-5 pr-4 font-mono text-[12px] text-primary">{{ t.trx_id }}</td>
+            <td class="py-3 px-4 tabular-nums text-ink whitespace-nowrap">{{ t.trx_date }}</td>
+            <td class="py-3 px-4 text-muted">{{ t.branch_name }}</td>
+            <td class="py-3 px-4 text-right tabular-nums font-semibold text-ink">{{ '{:,.2f}'.format(t.grand_total or 0) }}</td>
+            <td class="py-3 pl-4 pr-5 text-right tabular-nums text-muted">{{ '{:,.2f}'.format(t.total_tax) if t.total_tax is not none else '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="px-5 py-3.5 border-t border-hairline flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-[13px] text-muted">
+      <div class="tabular-nums">
+        Menampilkan <span class="font-semibold text-ink">{{ (preview.page - 1) * 25 + 1 }}–{{ [preview.page * 25, preview.total] | min }}</span>
+        dari <span class="font-semibold text-ink">{{ preview.total }}</span> transaksi
+      </div>
+      <div class="flex items-center gap-1.5">
+        <button type="button" {% if preview.page <= 1 %}disabled{% endif %}
+          hx-get="/partials/jobs/{{ job.id }}" hx-vals='{"preview_page": {{ preview.page - 1 }}}'
+          hx-target="#job-live" hx-swap="outerHTML"
+          class="h-8 px-3 rounded-control border border-hairline text-xs font-medium text-ink hover:bg-surface-hover disabled:text-subtle disabled:cursor-not-allowed transition-colors">Previous</button>
+        <span class="h-8 px-3 inline-flex items-center rounded-control bg-primary-subtle text-primary text-xs font-semibold tabular-nums">{{ preview.page }} / {{ preview.pages }}</span>
+        <button type="button" {% if preview.page >= preview.pages %}disabled{% endif %}
+          hx-get="/partials/jobs/{{ job.id }}" hx-vals='{"preview_page": {{ preview.page + 1 }}}'
+          hx-target="#job-live" hx-swap="outerHTML"
+          class="h-8 px-3 rounded-control border border-hairline text-xs font-medium text-ink hover:bg-surface-hover disabled:text-subtle disabled:cursor-not-allowed transition-colors">Next</button>
+      </div>
+    </div>
+    {% else %}
+    <div class="py-12 px-6 text-center">
+      <div class="w-11 h-11 rounded-full bg-hairline-subtle text-muted flex items-center justify-center mx-auto mb-3">
+        <i data-lucide="table" class="w-5 h-5"></i>
+      </div>
+      <h3 class="text-sm font-semibold text-ink">Belum ada transaksi masuk</h3>
+      <p class="text-[13px] text-muted mt-1">Data muncul di sini seiring cabang selesai di-scrape (commit per cabang).</p>
+    </div>
+    {% endif %}
+  </section>
+</div>

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="refresh" content="2">
+  <title>Verifikasi · DemoPOS</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; min-height: 100vh;
+           display: flex; align-items: center; justify-content: center;
+           background: linear-gradient(135deg, #f0fdfa 0%, #ecfeff 55%, #f0f9ff 100%); color: #0f172a; }
+    .card { width: min(92vw, 400px); background: #fff; border: 1px solid #ccfbf1;
+            border-radius: 14px; padding: 32px; box-shadow: 0 8px 24px rgba(13, 148, 136, .08); text-align: center; }
+    .shield { width: 46px; height: 46px; margin: 0 auto 14px; border-radius: 50%; background: #fffbeb;
+              color: #d97706; display: flex; align-items: center; justify-content: center; font-size: 22px; }
+    h1 { font-size: 17px; margin-bottom: 6px; }
+    p { font-size: 13px; color: #64748b; line-height: 1.5; }
+    .gate-box { margin: 22px auto; width: 260px; border: 1px solid #cbd5e1; border-radius: 8px;
+                background: #f8fafc; padding: 14px; display: flex; align-items: center; gap: 10px; }
+    .gate-box input { width: 18px; height: 18px; accent-color: #0d9488; }
+    .gate-box span { font-size: 13px; }
+    button { width: 260px; height: 40px; border: 0; border-radius: 8px; background: #0d9488;
+             color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; }
+    button:hover { background: #0f766e; }
+    .fine { margin-top: 16px; font-size: 11px; color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="shield">🛡</div>
+    <h1>Verifikasi bahwa Anda manusia</h1>
+    <p>Gate ini mensimulasikan Cloudflare Turnstile / captcha / OTP POS.<br>Selesaikan sekali — scraper lanjut otomatis.</p>
+    <form method="post" action="/demo-pos/gate">
+      <input type="hidden" name="next" value="{{ next }}">
+      <input type="hidden" name="kind" value="{{ kind }}">
+      <label class="gate-box"><input type="checkbox" name="human" value="1" required><span>Saya bukan robot</span></label>
+      <button type="submit">Lanjut</button>
+    </form>
+    <div class="fine">DemoPOS · uji pause/resume W2</div>
+  </div>
+  <script>
+    // Model "user menyelesaikan captcha": halaman berubah sendiri saat gate lolos
+    // (cookie browser ATAU flag harness). Scraper mendeteksi perubahan URL <= 5 detik.
+    const next = {{ next | tojson }};
+    const kind = {{ kind | tojson }};
+    setInterval(async () => {
+      try {
+        const r = await fetch('/demo-pos/gate-status?kind=' + encodeURIComponent(kind),
+                              { credentials: 'same-origin' });
+        const j = await r.json();
+        if (j.solved) location.replace(next);
+      } catch (e) { /* abaikan; poll berikutnya */ }
+    }, 1000);
+  </script>
+</body>
+</html>

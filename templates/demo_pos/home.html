@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Beranda · DemoPOS</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: #f0fdfa; color: #0f172a; padding: 40px 20px; }
+    .wrap { max-width: 640px; margin: 0 auto; }
+    h1 { font-size: 20px; color: #134e4a; margin-bottom: 6px; }
+    p { font-size: 13px; color: #64748b; margin-bottom: 22px; }
+    ul { list-style: none; display: grid; gap: 10px; }
+    a { display: block; background: #fff; border: 1px solid #ccfbf1; border-radius: 10px;
+        padding: 14px 16px; text-decoration: none; color: #0f172a; font-size: 14px; font-weight: 600; }
+    a:hover { border-color: #0d9488; }
+    small { display: block; font-weight: 400; color: #94a3b8; font-family: monospace; margin-top: 2px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Selamat datang di DemoPOS</h1>
+    <p>Login berhasil. Pilih cabang untuk melihat transaksi (atau scraper mengambil alih dari sini).</p>
+    <ul>
+      {% for key, name in branches %}
+      <li><a href="/demo-pos/transactions?branch={{ key }}&date_from=2026-01-01&date_to=2026-01-01">{{ name }}<small>{{ key }}</small></a></li>
+      {% endfor %}
+    </ul>
+  </div>
+</body>
+</html>

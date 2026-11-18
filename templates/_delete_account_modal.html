@@ -1,0 +1,37 @@
+<div class="fixed inset-0 z-50 bg-slate-900/30 backdrop-blur-[1px] flex items-center justify-center p-4"
+     onclick="if (event.target === this) closeModal()">
+  <div class="card w-full max-w-md shadow-modal" role="dialog" aria-modal="true" aria-label="Konfirmasi hapus akun">
+    <div class="p-5">
+      <div class="flex items-start gap-3.5">
+        <span class="w-10 h-10 rounded-full {{ 'bg-danger-bg text-danger' if not has_jobs else 'bg-warning-bg text-warning' }} flex items-center justify-center shrink-0">
+          <i data-lucide="{{ 'trash-2' if not has_jobs else 'shield-alert' }}" class="w-5 h-5"></i>
+        </span>
+        <div>
+          <h2 class="text-[16px] font-semibold text-ink">Hapus akun "{{ account.label }}"?</h2>
+          {% if has_jobs %}
+          <p class="mt-1.5 text-[13px] text-muted leading-relaxed">
+            <span class="font-semibold text-danger">Ditolak (E17).</span> Akun ini masih punya job.
+            Hapus job terkait di Dashboard dulu, baru hapus akun.
+          </p>
+          {% else %}
+          <p class="mt-1.5 text-[13px] text-muted leading-relaxed">
+            Kredensial terenkripsi dan <span class="font-semibold text-ink">direktori profil browser</span> terkait
+            ikut dihapus (S6). Tindakan ini tidak bisa dibatalkan.
+          </p>
+          {% endif %}
+        </div>
+      </div>
+      <div class="flex items-center justify-end gap-2.5 mt-5">
+        <button type="button" onclick="closeModal()" class="btn-secondary">Batal</button>
+        {% if not has_jobs %}
+        <form hx-post="/accounts/{{ account.id }}/delete" hx-swap="none">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <button type="submit" class="btn bg-danger hover:bg-red-700 text-white"><i data-lucide="trash-2" class="w-4 h-4"></i> Hapus akun</button>
+        </form>
+        {% else %}
+        <button type="button" disabled class="btn bg-danger text-white">Hapus akun</button>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>

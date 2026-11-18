@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Transaksi · DemoPOS</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: #f8fafc; color: #0f172a; padding: 32px 20px; }
+    .wrap { max-width: 980px; margin: 0 auto; }
+    h1 { font-size: 18px; color: #134e4a; }
+    .meta { font-size: 12px; color: #64748b; margin: 4px 0 18px; font-variant-numeric: tabular-nums; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; }
+    th { background: #f0fdfa; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #0f766e; padding: 10px 12px; border-bottom: 1px solid #ccfbf1; }
+    td { padding: 9px 12px; font-size: 13px; border-bottom: 1px solid #f1f5f9; font-variant-numeric: tabular-nums; }
+    td.num, th.num { text-align: right; }
+    td.id { font-family: ui-monospace, monospace; font-size: 12px; color: #0d9488; }
+    .pager { margin-top: 16px; display: flex; gap: 8px; align-items: center; font-size: 13px; color: #64748b; }
+    .pager a { padding: 6px 12px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; color: #0f172a; text-decoration: none; }
+    .pager a:hover { border-color: #0d9488; }
+    .empty { padding: 30px; text-align: center; color: #94a3b8; font-size: 13px; background: #fff; border: 1px dashed #cbd5e1; border-radius: 10px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Transaksi — <span id="branch-name">{{ branch_name }}</span></h1>
+    <div class="meta">{{ date_from }} s/d {{ date_to }} · {{ total }} transaksi · halaman {{ page }}/{{ pages }}</div>
+    {% if rows %}
+    <table id="trx-table" data-branch="{{ branch }}">
+      <thead>
+        <tr>
+          <th>ID</th><th>Tanggal</th><th>Pelanggan</th><th class="num">Items</th><th>Metode</th>
+          <th class="num">Total Price</th><th class="num">Tax</th><th class="num">Grand Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td class="id">{{ r.trx_id }}</td>
+          <td>{{ r.trx_date }}</td>
+          <td>{{ r.customer }}</td>
+          <td class="num">{{ r.items }}</td>
+          <td>{{ r.payment_method }}</td>
+          <td class="num">{{ r.total_price }}</td>
+          <td class="num">{{ r.total_tax }}</td>
+          <td class="num">{{ r.grand_total }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <table id="trx-table" data-branch="{{ branch }}" style="display:none"></table>
+    <div class="empty">Tidak ada transaksi pada rentang ini (kosong ≠ gagal).</div>
+    {% endif %}
+    <div class="pager">
+      {% if page > 1 %}
+      <a rel="prev" href="/demo-pos/transactions?branch={{ branch }}&date_from={{ date_from }}&date_to={{ date_to }}&page={{ page - 1 }}">← Sebelumnya</a>
+      {% endif %}
+      <span>{{ page }} / {{ pages }}</span>
+      {% if page < pages %}
+      <a rel="next" href="/demo-pos/transactions?branch={{ branch }}&date_from={{ date_from }}&date_to={{ date_to }}&page={{ page + 1 }}">Berikutnya →</a>
+      {% endif %}
+    </div>
+  </div>
+</body>
+</html>

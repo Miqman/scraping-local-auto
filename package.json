@@ -1,0 +1,17 @@
+{
+  "name": "scraping-local-auto-ui",
+  "private": true,
+  "description": "Dev-only build: Tailwind v4 + aset UI lokal (S5). Tidak dibutuhkan di mesin operator.",
+  "scripts": {
+    "build:css": "tailwindcss -i tailwind/input.css -o static/app.css --minify",
+    "assets": "node scripts/copy-assets.mjs"
+  },
+  "devDependencies": {
+    "@fontsource/inter": "^5.2.5",
+    "@fontsource/jetbrains-mono": "^5.2.5",
+    "@tailwindcss/cli": "^4.1.0",
+    "htmx.org": "^2.0.4",
+    "lucide": "^0.544.0",
+    "tailwindcss": "^4.1.0"
+  }
+}

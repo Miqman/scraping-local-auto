@@ -1,0 +1,93 @@
+{% import "macros.html" as m %}
+<section id="jobs-table" class="card overflow-hidden"
+  hx-get="/partials/jobs" hx-trigger="every 2s" hx-include="#job-filters"
+  hx-target="this" hx-swap="outerHTML">
+  <div class="overflow-x-auto [contain:paint]">
+    <table class="w-full text-left border-collapse">
+      <thead>
+        <tr class="border-b border-hairline bg-canvas/60 text-[11px] font-semibold uppercase tracking-[0.05em] text-muted">
+          {{ m.sort_th('Job', 'id', filters) }}
+          <th class="py-3 px-4">Rentang Tanggal</th>
+          {{ m.sort_th('Cabang', 'branches', filters) }}
+          {{ m.sort_th('Status', 'status', filters) }}
+          {{ m.sort_th('Dibuat', 'created_at', filters) }}
+          <th class="py-3 pl-4 pr-5 text-right"><span class="sr-only">Aksi</span></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-hairline text-[14px]">
+        {% for j in jobs.rows %}
+        <tr class="hover:bg-surface-hover transition-colors cursor-pointer" onclick="location.href='/jobs/{{ j.id }}'">
+          <td class="py-3.5 pl-5 pr-4">
+            <div class="font-mono text-[12px] font-medium text-primary">#{{ '%04d' % j.id }}</div>
+            <div class="text-[13px] font-semibold text-ink leading-snug">{{ j.account_label }}</div>
+            <div class="text-[12px] text-muted">{{ j.pos_code }}</div>
+          </td>
+          <td class="py-3.5 px-4 tabular-nums text-[13px] text-ink whitespace-nowrap">
+            {{ j.date_from }} <span class="text-subtle">→</span> {{ j.date_to }}
+          </td>
+          <td class="py-3.5 px-4">
+            <span class="tabular-nums font-semibold text-ink">{{ j.done_count }}</span><span class="text-subtle tabular-nums">/{{ j.branch_total }}</span>
+            <div class="mt-1 h-1 w-16 rounded-full bg-hairline-subtle overflow-hidden">
+              <div class="h-full rounded-full {{ 'bg-success' if j.done_count == j.branch_total and j.branch_total > 0 else 'bg-primary' }}"
+                   style="width: {{ (j.done_count / j.branch_total * 100) if j.branch_total else 0 }}%"></div>
+            </div>
+          </td>
+          <td class="py-3.5 px-4">{{ m.badge(j.status, job_label[j.status]) }}</td>
+          <td class="py-3.5 px-4 tabular-nums text-[13px] text-muted whitespace-nowrap">{{ m.fmt_dt(j.created_at) }}</td>
+          <td class="py-3.5 pl-4 pr-5 text-right">
+            <a href="/jobs/{{ j.id }}" onclick="event.stopPropagation()"
+               class="inline-flex items-center gap-1.5 h-8 px-3 rounded-control border border-hairline text-[12px] font-medium text-ink hover:bg-surface-hover transition-colors">
+              Detail <i data-lucide="arrow-right" class="w-3 h-3 text-muted"></i>
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if not jobs.rows %}
+  <div class="py-14 px-6 text-center">
+    <div class="w-11 h-11 rounded-full bg-hairline-subtle text-muted flex items-center justify-center mx-auto mb-3">
+      <i data-lucide="inbox" class="w-5 h-5"></i>
+    </div>
+    <h3 class="text-sm font-semibold text-ink">Belum ada job yang cocok</h3>
+    <p class="text-[13px] text-muted mt-1">Mulai job pertama, atau sesuaikan pencarian dan filter.</p>
+    <div class="mt-4 flex items-center justify-center gap-2.5">
+      <a href="/jobs/new" class="btn-primary h-8 px-3 text-xs"><i data-lucide="plus" class="w-3.5 h-3.5"></i> Job Baru</a>
+      <button type="button" onclick="resetJobFilters()" class="btn-secondary h-8 px-3 text-xs">Reset filter</button>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="px-5 py-3.5 border-t border-hairline flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-[13px] text-muted">
+    <div class="tabular-nums">
+      {% if jobs.total %}
+      Menampilkan <span class="font-semibold text-ink">{{ (jobs.page - 1) * jobs.page_size + 1 }}–{{ [jobs.page * jobs.page_size, jobs.total] | min }}</span>
+      dari <span class="font-semibold text-ink">{{ jobs.total }}</span> job
+      {% else %}0 job{% endif %}
+    </div>
+    <div class="flex items-center gap-1.5">
+      <button type="button" {% if jobs.page <= 1 %}disabled{% endif %}
+        hx-get="/partials/jobs" hx-vals='{"page": {{ jobs.page - 1 }}}'
+        hx-include="#job-filters" hx-target="#jobs-table" hx-swap="outerHTML"
+        class="h-8 px-3 rounded-control border border-hairline text-xs font-medium text-ink hover:bg-surface-hover disabled:text-subtle disabled:bg-canvas/50 disabled:cursor-not-allowed transition-colors">Previous</button>
+      {% for p in range(1, jobs.pages + 1) %}
+        {% if p <= 2 or p > jobs.pages - 2 or (p >= jobs.page - 1 and p <= jobs.page + 1) %}
+        <button type="button"
+          hx-get="/partials/jobs" hx-vals='{"page": {{ p }}}'
+          hx-include="#job-filters" hx-target="#jobs-table" hx-swap="outerHTML"
+          class="h-8 w-8 rounded-control text-xs font-semibold tabular-nums transition-colors {{ 'bg-primary text-white' if p == jobs.page else 'border border-hairline text-ink hover:bg-surface-hover' }}">{{ p }}</button>
+        {% elif p == 3 and jobs.page > 4 %}
+        <span class="text-subtle px-0.5">…</span>
+        {% elif p == jobs.pages - 2 and jobs.page < jobs.pages - 3 %}
+        <span class="text-subtle px-0.5">…</span>
+        {% endif %}
+      {% endfor %}
+      <button type="button" {% if jobs.page >= jobs.pages %}disabled{% endif %}
+        hx-get="/partials/jobs" hx-vals='{"page": {{ jobs.page + 1 }}}'
+        hx-include="#job-filters" hx-target="#jobs-table" hx-swap="outerHTML"
+        class="h-8 px-3 rounded-control border border-hairline text-xs font-medium text-ink hover:bg-surface-hover disabled:text-subtle disabled:bg-canvas/50 disabled:cursor-not-allowed transition-colors">Next</button>
+    </div>
+  </div>
+</section>

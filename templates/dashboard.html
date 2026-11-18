@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% import "macros.html" as m %}
+{% block title %}Dashboard{% endblock %}
+{% block breadcrumb %}<span class="font-semibold text-ink">Dashboard</span>{% endblock %}
+{% block content %}
+
+<div class="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
+  <div>
+    <div class="overline mb-1">Workspace · Operator Lokal</div>
+    <h1 class="text-[28px] font-bold text-ink tracking-[-0.02em] leading-tight">Dashboard</h1>
+    <p class="mt-1.5 text-[14px] text-muted max-w-xl leading-relaxed">
+      Job gagal server selesai di lokal: pilih POS, jalankan, selesaikan captcha bila muncul, export Excel. Riwayat job menyatu di sini.
+    </p>
+  </div>
+  <a href="/jobs/new" class="btn-primary shrink-0">
+    <i data-lucide="plus" class="w-4 h-4"></i> Job Baru
+  </a>
+</div>
+
+{% if stats.waiting_user > 0 %}
+<div class="mb-6 flex flex-col sm:flex-row sm:items-center gap-3 rounded-card border border-warning/30 bg-warning-bg px-4 py-3">
+  <div class="flex items-start gap-3 flex-1">
+    <i data-lucide="hand" class="w-4 h-4 text-warning mt-0.5 shrink-0"></i>
+    <div class="text-[13px] text-ink leading-relaxed">
+      <span class="font-semibold text-warning">{{ stats.waiting_user }} job menunggu user.</span>
+      Selesaikan captcha/OTP di browser yang terbuka — aplikasi lanjut otomatis. Buka Detail Job untuk tombol fallback "Sudah selesai".
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% include "_stats.html" %}
+
+<!-- Toolbar filter (server-side via htmx; state polling ikut membaca input ini) -->
+<div id="job-filters" class="card p-4 mb-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+  <div class="flex flex-wrap items-center gap-2.5">
+    <div class="relative flex-1 sm:flex-initial">
+      <i data-lucide="search" class="w-4 h-4 text-subtle absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+      <input id="q" name="q" type="text" placeholder="Cari merchant, POS, atau ID job…"
+        class="control w-full sm:w-72 pl-9 pr-3"
+        hx-get="/partials/jobs" hx-trigger="keyup changed delay:300ms"
+        hx-include="#job-filters" hx-target="#jobs-table" hx-swap="outerHTML">
+    </div>
+    <button type="button" onclick="resetJobFilters()" class="btn-secondary px-3" title="Reset semua filter">
+      <i data-lucide="filter-x" class="w-3.5 h-3.5 text-muted"></i> Reset
+      <span id="filter-count" class="hidden px-1.5 py-0.5 text-[11px] font-semibold rounded-full bg-primary-subtle text-primary tabular-nums"></span>
+    </button>
+  </div>
+  <div class="flex flex-wrap items-center gap-2.5">
+    <div class="relative">
+      <select id="f-status" name="status" aria-label="Filter status" class="control pl-3 pr-8 appearance-none cursor-pointer font-medium"
+        hx-get="/partials/jobs" hx-trigger="change" hx-include="#job-filters" hx-target="#jobs-table" hx-swap="outerHTML">
+        <option value="">Semua status</option>
+        {% for s, l in job_label.items() %}<option value="{{ s }}">{{ l }}</option>{% endfor %}
+      </select>
+      <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-muted absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+    </div>
+    <div class="relative">
+      <select id="f-pos" name="pos" aria-label="Filter POS" class="control pl-3 pr-8 appearance-none cursor-pointer font-medium"
+        hx-get="/partials/jobs" hx-trigger="change" hx-include="#job-filters" hx-target="#jobs-table" hx-swap="outerHTML">
+        <option value="">Semua POS</option>
+        {% for p in pos_registry %}<option value="{{ p.code }}">{{ p.name }}</option>{% endfor %}
+      </select>
+      <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-muted absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+    </div>
+    <input id="f-from" name="date_from" type="date" aria-label="Dari tanggal" class="control px-3 tabular-nums cursor-pointer"
+      hx-get="/partials/jobs" hx-trigger="change" hx-include="#job-filters" hx-target="#jobs-table" hx-swap="outerHTML">
+    <input id="f-to" name="date_to" type="date" aria-label="Sampai tanggal" class="control px-3 tabular-nums cursor-pointer"
+      hx-get="/partials/jobs" hx-trigger="change" hx-include="#job-filters" hx-target="#jobs-table" hx-swap="outerHTML">
+    <input type="hidden" id="f-page" name="page" value="1">
+    <input type="hidden" id="f-sort" name="sort" value="id">
+    <input type="hidden" id="f-dir" name="dir" value="desc">
+  </div>
+</div>
+
+{% include "_jobs_table.html" %}
+{% endblock %}
