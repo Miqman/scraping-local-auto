@@ -5,6 +5,7 @@ data-acceptance-run.log
 # kredensial merchant plaintext dari tim — jangan pernah commit
 akun-siberpos.txt
 akun-majoo.txt
+akun-loyversepos.txt
 # dev-only build tooling
 node_modules/
 __pycache__/
@@ -13,3 +14,11 @@ __pycache__/
 # referensi desain owner (aset sumber, bukan bagian runtime)
 gemini-code-*.html
 gemini-code-*.md
+graphify-out/
+# T24 desktop build (artefak dev-only; installer & sidecar tidak di-commit)
+desktop/node_modules/
+desktop/dist/
+vendor/
+sidecar/build/
+sidecar/dist/
+sidecar/*.spec

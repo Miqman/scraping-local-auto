@@ -15,9 +15,11 @@ import crawlers
 from . import crypto, db, demo_pos, export, security
 from .paths import STATIC_DIR, TEMPLATES_DIR, profile_dir
 from .runner import MAX_ATTEMPTS, Runner
+from .scheduler import RUN_AT_RE, Scheduler
 
 log = logging.getLogger("sla")
 runner = Runner()
+scheduler = Scheduler()
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 templates.env.globals["pos_registry"] = crawlers.REGISTRY
 templates.env.globals["app_version"] = "M0 · v0.1.0"
@@ -81,7 +83,9 @@ async def lifespan(app: FastAPI):
         log.info("retensi E18: %d job >90 hari dihapus", p)
     _seed_demo()
     await runner.start()
+    await scheduler.start()
     yield
+    await scheduler.stop()
     await runner.stop()
 
 
@@ -352,12 +356,35 @@ def delete_job(request: Request, job_id: int):
 
 @app.get("/accounts", response_class=HTMLResponse)
 def accounts_page(request: Request):
-    return render(request, "accounts.html", accounts=db.list_accounts(), active_page="accounts")
+    return render(request, "accounts.html", accounts=db.list_accounts(),
+                  schedules=db.list_schedules(), active_page="accounts")
 
 
 @app.get("/partials/accounts", response_class=HTMLResponse)
 def accounts_partial(request: Request):
     return render(request, "_accounts_table.html", accounts=db.list_accounts())
+
+
+@app.get("/partials/schedules", response_class=HTMLResponse)
+def schedules_partial(request: Request):
+    return render(request, "_schedules.html", schedules=db.list_schedules())
+
+
+@app.post("/accounts/{account_id}/schedule", response_class=HTMLResponse)
+async def save_schedule(request: Request, account_id: int):
+    if db.get_account(account_id) is None:
+        raise HTTPException(404)
+    form = await request.form()
+    run_at = str(form.get("run_at", "")).strip()
+    enabled = form.get("enabled") == "1"
+    headers = {}
+    if not RUN_AT_RE.match(run_at):
+        hx_trigger(headers, {"toast": {"msg": "Jam jadwal tidak valid (HH:MM, 00:00–23:59)", "kind": "error"}})
+        return PlainTextResponse("", status_code=422, headers=headers)
+    db.upsert_schedule(account_id, enabled, run_at)
+    hx_trigger(headers, {"toast": {"msg": f"Jadwal {'diaktifkan' if enabled else 'dinonaktifkan'} — harian {run_at}, rentang kemarin (D-1)",
+                                   "kind": "success"}, "refreshSchedules": True})
+    return render(request, "_schedules.html", schedules=db.list_schedules())
 
 
 @app.get("/accounts/modal", response_class=HTMLResponse)
@@ -392,7 +419,7 @@ async def save_account(request: Request):
         db.create_account(pos_code, label, username, crypto.encrypt(password))
         msg = "Akun tersimpan terenkripsi (AES-256-GCM)"
     hx_trigger(headers, {"toast": {"msg": msg, "kind": "success"},
-                         "closeModal": True, "refreshAccounts": True})
+                         "closeModal": True, "refreshAccounts": True, "refreshSchedules": True})
     return PlainTextResponse("", status_code=204, headers=headers)
 
 
@@ -415,7 +442,7 @@ def delete_account(request: Request, account_id: int):
     db.delete_account(account_id)
     shutil.rmtree(profile_dir(account_id), ignore_errors=True)  # S6: profil browser ikut hilang
     hx_trigger(headers, {"toast": {"msg": "Akun + profil browser dihapus", "kind": "success"},
-                         "closeModal": True, "refreshAccounts": True})
+                         "closeModal": True, "refreshAccounts": True, "refreshSchedules": True})
     return PlainTextResponse("", status_code=204, headers=headers)
 
 

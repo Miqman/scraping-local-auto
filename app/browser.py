@@ -92,13 +92,24 @@ class Session:
     def _launch(self, prof):
         try:
             from camoufox.sync_api import Camoufox  # noqa: delay import
-            self._camoufox_cm = Camoufox(
-                headless=False, persistent_context=True, user_data_dir=prof,
-                humanize=False, geoip=False, timeout=25000,
-            )
+            kwargs = dict(headless=False, persistent_context=True, user_data_dir=prof,
+                          humanize=False, geoip=False, timeout=25000)
+            bundle = os.environ.get("SLA_CAMOUFOX_DIR")
+            if bundle:
+                # T24: Camoufox terbundel installer — tanpa unduh runtime. UBO di-exclude:
+                # addons default resolve ke cache user (INSTALL_DIR), bukan ke bundle.
+                import json
+                from camoufox.addons import DefaultAddons
+                with open(os.path.join(bundle, "version.json"), encoding="utf-8") as f:
+                    ff_version = json.load(f)["version"].split(".", 1)[0]
+                kwargs.update(executable_path=os.path.join(bundle, "camoufox.exe"),
+                              ff_version=ff_version, exclude_addons=[DefaultAddons.UBO])
+            self._camoufox_cm = Camoufox(**kwargs)
             self._ctx = self._camoufox_cm.__enter__()
             self.engine = "camoufox"
         except Exception as exc:
+            if os.environ.get("SLA_CAMOUFOX_DIR"):
+                raise CrawlError("browser", f"Camoufox bundle gagal dibuka: {exc}") from exc
             log.warning("Camoufox tidak tersedia (%s); fallback Playwright Chromium", exc)
             self._camoufox_cm = None
             self._pw = sync_playwright().start()

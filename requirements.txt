@@ -2,7 +2,9 @@ fastapi>=0.115,<0.129
 uvicorn>=0.30
 jinja2>=3.1
 python-multipart>=0.0.9
-cryptography>=42
+# Python 3.9.0: python3.dll belum ekspor PyCMethod_New -> cryptography>=42 gagal muat (_rust).
+cryptography>=42; python_version >= "3.10"
+cryptography>=41,<42; python_version < "3.10"
 keyring>=25
 xlsxwriter>=3.2
 playwright>=1.44

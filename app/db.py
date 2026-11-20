@@ -89,6 +89,13 @@ def init() -> None:
         c.execute("CREATE TABLE IF NOT EXISTS sessions ("
                   "account_id INTEGER PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,"
                   "token_enc BLOB NOT NULL, updated_at TEXT NOT NULL)")
+        # T22: jadwal harian per akun (story 6; Q5 default PRD §12 2026-11-19)
+        c.execute("CREATE TABLE IF NOT EXISTS schedules ("
+                  "account_id INTEGER PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,"
+                  "enabled INTEGER NOT NULL DEFAULT 0,"
+                  "run_at TEXT NOT NULL DEFAULT '06:00',"
+                  "last_run_date TEXT,"
+                  "updated_at TEXT NOT NULL)")
 
 
 def recover_interrupted() -> int:
@@ -469,3 +476,38 @@ def save_session_token(account_id: int, token_enc: bytes) -> None:
 def delete_session_token(account_id: int) -> None:
     with conn() as c:
         c.execute("DELETE FROM sessions WHERE account_id=?", (account_id,))
+
+
+# ---------- schedules (T22) ----------
+
+def get_schedule(account_id: int):
+    with conn() as c:
+        return c.execute("SELECT * FROM schedules WHERE account_id=?", (account_id,)).fetchone()
+
+
+def list_schedules() -> list:
+    """Semua akun + jadwalnya (LEFT JOIN; default nonaktif 06:00 bila belum ada baris)."""
+    with conn() as c:
+        return c.execute(
+            "SELECT a.id AS account_id, a.label, a.pos_code, a.username,"
+            " COALESCE(s.enabled, 0) AS enabled, COALESCE(s.run_at, '06:00') AS run_at,"
+            " s.last_run_date"
+            " FROM accounts a LEFT JOIN schedules s ON s.account_id = a.id"
+            " ORDER BY a.pos_code, a.label").fetchall()
+
+
+def upsert_schedule(account_id: int, enabled: bool, run_at: str) -> None:
+    ts = now()
+    with conn() as c:
+        c.execute(
+            "INSERT INTO schedules(account_id,enabled,run_at,updated_at) VALUES(?,?,?,?) "
+            "ON CONFLICT(account_id) DO UPDATE SET enabled=excluded.enabled,"
+            " run_at=excluded.run_at, updated_at=excluded.updated_at",
+            (account_id, int(enabled), run_at, ts))
+
+
+def mark_schedule_run(account_id: int, run_date: str) -> None:
+    ts = now()
+    with conn() as c:
+        c.execute("UPDATE schedules SET last_run_date=?, updated_at=? WHERE account_id=?",
+                  (run_date, ts, account_id))

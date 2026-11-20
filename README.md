@@ -83,6 +83,49 @@ Alur di-port dari projek referensi `scraping-efd-python/utils/` (**proxy diabaik
 Kredensial merchant disimpan terenkripsi via halaman Akun (file plaintext dari tim jangan di-commit — sudah di-.gitignore).
 Dump DOM tersanitasi untuk diagnosa selector: env `SLA_DEBUG_DUMP=1` → `data/debug/siberpos_*.html` (tanpa nilai input/isi script).
 
+## Jadwal otomatis (T22, story 6)
+
+Default Q5 (PRD §12 keputusan 2026-11-19): **harian pukul 06:00 waktu lokal mesin, semua hari,
+rentang = kemarin (D-1)**. Konfigurasi per akun di halaman **Akun Merchant → kartu "Jadwal otomatis"**
+(jam `HH:MM` + toggle Aktif; opt-in, default nonaktif). Scheduler in-process (`app/scheduler.py`,
+tick 30 detik) membuat job `queued` — runner mengambilnya seperti job manual: batas E6 (akun sama
+antri) / E7 (maks 2 paralel), retry, export, dan status live semuanya sama. Override manual = **Job Baru**.
+
+- **At-most-once per hari:** `last_run_date` ditandai sebelum job dibuat — tick berikutnya tidak mendobel.
+- **Catch-up:** aplikasi dibuka setelah jam jadwal → job tetap dibuat di hari yang sama.
+  Aplikasi tutup seharian → tidak ada backfill hari sebelumnya.
+- POS yang crawler-nya belum tersedia (mis. `kasirstaff`) dilewati otomatis + log peringatan.
+- Hapus akun → jadwal ikut terhapus (CASCADE). Zona waktu = lokal mesin (operator ID ≈ zona akun POS).
+- Self-check logika jatuh tempo: `python -m app.scheduler`.
+
+## Desktop installer (T24, Win-first)
+
+Wrapper Electron (`desktop/`) membungkus UI localhost yang ada; sidecar Python dibundle
+PyInstaller onedir + browser Camoufox terbundel — operator tidak perlu install Python/browser.
+
+Build (mesin developer, berurutan):
+
+```bash
+python -m pip install pyinstaller
+python scripts/build_sidecar.py          # -> sidecar/dist/sla-sidecar/ (~259 MB)
+# Camoufox: salin cache browser (python -m camoufox path) ke vendor/camoufox;
+# folder fonts/ (2.1 GB) opsional runtime — boleh dihapus dari bundle (launch teruji tanpanya)
+cd desktop && npm install
+npm run dist:win                         # -> dist/Scraping Lokal Otomatis Setup 0.1.0.exe (~302 MB)
+```
+
+- Install: dobel-klik setup (NSIS oneClick per-user, tanpa admin) atau silent `setup.exe /S`.
+  Data app terpasang: `%APPDATA%/scraping-local-auto-desktop/data` (terpisah dari repo).
+- `desktop/main.js`: precheck port dipakai → dialog; single-instance lock; spawn sidecar
+  (`SLA_NO_BROWSER=1`, `SLA_CAMOUFOX_DIR=resources/camoufox`); tunggu `/healthz`; buka window;
+  sidecar mati → dialog + recovery E5 saat buka ulang.
+- Catatan build Windows: installer **unsigned** (`signAndEditExecutable:false`); cache
+  winCodeSign electron-builder gagal extract symlink tanpa privilege Windows → pre-extract
+  manual `7za x -y` (tanpa `-snld`) ke `%LOCALAPPDATA%/electron-builder/Cache/winCodeSign/<hash>/`;
+  NSIS `runAfterFinish:false` agar install silent tidak menjalankan app di port default.
+- Mac/Linux: cross-build menyusul saat mesin uji tersedia (owner Win-first, PRD §12).
+- Panduan operator: [`PANDUAN-OPERATOR.md`](PANDUAN-OPERATOR.md).
+
 ## Registry POS (T23)
 
 | POS | Status | Batas rentang (Q6) | API cabang | Gate |
@@ -91,8 +134,8 @@ Dump DOM tersanitasi untuk diagnosa selector: env `SLA_DEBUG_DUMP=1` → `data/d
 | `esbpos` | M1 — teruji situs nyata (job #16: 2.184 trx; job #17 satu cabang: 269 trx → Excel 270 baris); port `esb_posv2.py` → `crawlers/esbv2.py` (page-headed + fetch in-page + popup paksa-login). Auto-fetch = per-cabang (tanpa agregat, total tidak dobel); agregat = kandidat "Semua Branch" atau key manual `all` | report terima rentang penuh DD-MM-YYYY; chunk 31 hari | ada — `/branch/browse-modal` (checkbox `data-result`, kutip tunggal); nama manual di-resolve ke ID | Cloudflare bila muncul (pause user) + CSRF Yii + popup paksa-login (auto-Yes) |
 | `demo` | harness uji lokal (bukan POS produksi) | 31 hari per request (400 bila lebih) | ada — 5 cabang statis | checkbox simulasi Turnstile/OTP |
 | `majoo` | M1 — teruji situs nyata (job #18: 378 trx → Excel 379 baris; #19 reuse token 3 detik); port `MaphyMerchantApps/MajooV2POSSvc.java` → `crawlers/majoo.py`. Camoufox hanya untuk login (Turnstile latar belakang, tanpa 2captcha); token wajib disimpan terenkripsi di tabel `sessions` (padanan DB cartenz) + reuse via checkToken; data via API `services.majoo.id` Bearer | rentang penuh start/end_date jam 00:00/23:59; chunk 31 hari | ada — `support_by_cabang` (header Token); per-cabang `outlet_id` | Turnstile latar belakang (managed auto-pass; interaktif → pause user) |
-| `loyverse` | M1 belum — referensi Go/Java di `MaphyMerchantApps` | ditemukan saat build | ditemukan saat build | reCAPTCHA |
-| `kasirstaff` | **BLOCKED Q3** (URL + akun contoh dari tim) | belum diketahui | belum diketahui | belum diketahui |
+| `loyverse` | M1 — teruji situs nyata + data nyata: job #11 (akun tim "warung family", via UI, 2026-10-21→11-19) → **147 trx → Excel 148 baris, uang cocok raw_json (mismatch 0)**; login Camoufox: cabinetlogin 200 `loginResult=ok`, reCAPTCHA invisible lolos tanpa 2captcha/pause user; job #1–#2, #9 (akun OSHC kosong) `done` E8 → Excel header; kredensial salah → `[auth]` tanpa retry; reuse cookies `sessions` portabel 1 detik. Port `LoyversePOSSvc.java` (getAllTrxRAW) + Go `loyverse_service.go` → `crawlers/loyverse.py`. Cookie auth `ownercub-lls`/`JSESSIONID` (path `/data`) wajib disimpan terenkripsi (padanan saveToDB cartenz) | customPeriod `YYYY-MM-DD 00:00:00`/`23:59:59`; chunk 31 hari (E9); rentang di luar jendela arsip → `total`/`pages` kosong (`result ok`) = kosong | tidak ada — agregat ("all", "Semua Outlet") `outletsIds=all`; `outletName` per baris (`fillSelectData.outlets` ada di respons) | reCAPTCHA v2 invisible (Camoufox auto-pass terobservasi; challenge interaktif → pause user W2) |
+| `kasirstaff` | **SKIP sementara** (keputusan owner 2026-11-19, PRD §12; sebelumnya BLOCKED Q3 — URL + akun contoh dari tim) | belum diketahui | belum diketahui | belum diketahui |
 
 ## Menambah crawler baru (pola registry)
 
@@ -131,10 +174,12 @@ pause/resume captcha (W2), commit per cabang + dedup UNIQUE (W3/E10), recovery r
 | Cabang `[ui_changed]` | Website POS berubah — **Salin detail error** (redacted) dan kirim ke developer pusat. |
 | Browser tidak terbuka | Jalankan `python -m playwright install chromium` (atau `python -m camoufox fetch`). MVP selalu headed. |
 | Port 8765 dipakai | Set `SLA_PORT` lain, atau matikan proses lama. |
+| `ImportError: DLL load failed ... _rust` (Windows, Python 3.9.0) | `python3.dll` 3.9.0 belum ekspor `PyCMethod_New` yang dibutuhkan cryptography ≥42. `requirements.txt` sudah memakai marker `python_version` (3.9 → cryptography 41.x). Bila terlanjur: `pip install cryptography==41.0.7` atau upgrade Python ≥3.10 (PRD §8: 3.12). |
 
 ## Status milestone
 
 - **M0** (repo ini): kerangka W1–W5 + crawler SiberPOS port alur referensi (login Turnstile + API transaksi)
-  + Demo POS end-to-end + acceptance run 37/37. ESB = stretch (T15, belum).
-- **M1**: ESB, Majoo, Loyverse, KasirStaffPOS (Q3), persist sesi, scheduler (Q5).
+  + Demo POS end-to-end + acceptance run 37/37 (ulang 2026-11-19 pasca-T19).
+- **M1**: ESB ✓ (T15/T17), Majoo ✓ (T18), Loyverse ✓ (T19), persist sesi ✓ (T21), scheduler ✓ (T22),
+  registry terdokumentasi ✓ (T23); KasirStaffPOS = SKIP sementara (owner 2026-11-19, Q3 belum terjawab).
 - **M2**: installer 3 OS, auto-update bertanda tangan, FTP (Q1/Q2), SQLCipher go/no-go.

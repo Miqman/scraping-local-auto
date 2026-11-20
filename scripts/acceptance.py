@@ -6,6 +6,7 @@ import http.cookiejar
 import json
 import os
 import re
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -24,7 +25,7 @@ DATA = Path(os.environ["SLA_DATA_DIR"])
 DATA.mkdir(parents=True, exist_ok=True)
 os.environ["SLA_GATE_TIMEOUT_SECONDS"] = "8"  # knob dev: timeout gate dipersingkat utk uji E1
 
-BASE = "http://127.0.0.1:8765"
+BASE = "http://127.0.0.1:" + os.environ.get("SLA_PORT", "8765")
 RESULTS = []
 
 
@@ -153,14 +154,17 @@ def start_app():
         except Exception:
             time.sleep(0.5)
     p.kill()
-    raise RuntimeError("app tidak mau start di 127.0.0.1:8765")
+    raise RuntimeError(f"app tidak mau start di {BASE}")
 
 
 def kill_app(p, browsers=True):
     if browsers:
         # bersihkan browser milik profil app agar tidak mengunci profil saat restart
-        ps = ("Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*profiles" +
-              os.sep + "account_*' } | Select-Object -ExpandProperty ProcessId")
+        # hanya browser milik data-dir run ini (jangan bunuh browser app user yang hidup)
+        pats = sorted({f"*{d}{os.sep}profiles{os.sep}account_*" for d in (str(DATA), str(DATA.resolve()))})
+        ps = ("Get-CimInstance Win32_Process | Where-Object { " +
+              " -or ".join(f"$_.CommandLine -like '{p}'" for p in pats) +
+              " } | Select-Object -ExpandProperty ProcessId")
         try:
             out = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
                                  capture_output=True, text=True, timeout=30).stdout
@@ -179,9 +183,11 @@ def kill_app(p, browsers=True):
 
 def browser_pids(account_id):
     """Cari proses browser milik profil akun ini (command line memuat path profil)."""
-    pat = f"*profiles{os.sep}account_{account_id}*"
-    ps = ("Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '" + pat + "' } "
-          "| Select-Object -ExpandProperty ProcessId")
+    pats = sorted({f"*{d}{os.sep}profiles{os.sep}account_{account_id}*"
+                   for d in (str(DATA), str(DATA.resolve()))})
+    ps = ("Get-CimInstance Win32_Process | Where-Object { " +
+          " -or ".join(f"$_.CommandLine -like '{p}'" for p in pats) +
+          " } | Select-Object -ExpandProperty ProcessId")
     try:
         out = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
                              capture_output=True, text=True, timeout=30).stdout
@@ -193,7 +199,7 @@ def browser_pids(account_id):
 def main():
     try:
         urllib.request.urlopen(BASE + "/healthz", timeout=2)
-        print("App sudah jalan di 8765 — matikan dulu sebelum acceptance run.")
+        print(f"App sudah jalan di {BASE} — matikan dulu sebelum acceptance run.")
         sys.exit(2)
     except Exception:
         pass
@@ -235,6 +241,8 @@ def main():
               {r["status"] for r in q("SELECT DISTINCT status FROM jobs")} >= {"done", "partial", "failed"})
 
         # ---------- W1 + W2 + W3 + E8 + E9 ----------
+        # profil demo dibersihkan: gate login muncul lagi -> run berulang deterministik
+        shutil.rmtree(DATA / "profiles" / f"account_{demo['id']}", ignore_errors=True)
         jid = c.new_job(demo["id"], d_from, d_to,
                         ["demo-pusat|Cabang Pusat", "demo-mall|Cabang Mall",
                          "demo-bandara|Cabang Bandara", "demo-kosong|Cabang Sepi"])

@@ -373,6 +373,33 @@ Aturan data:
 | Q5 | Spesifikasi jadwal (jam, timezone, hari) | Owner | Fitur scheduler |
 | Q6 | Batas rentang tanggal per POS | Ditemukan saat build crawler | M1 per POS |
 
+### Keputusan owner tambahan (setelah M0)
+
+- **2026-11-19 — skip T20, lanjut T22+:** owner menyatakan 4 POS sudah bisa mengambil data
+  (SiberPOS, ESB, Majoo, Loyverse — T10/T15/T18/T19) dan menginstruksikan **T20 (KasirStaffPOS)
+  dilewati sementara** (Q3: URL + akun contoh belum ada dari tim); dikerjakan bila Q3 terjawab
+  dan owner minta dilanjutkan. Task berikutnya (T22 scheduler, dst.) dikerjakan mulai hari ini.
+- **2026-11-19 — Q5 dijawab dengan default developer** (owner instruksi "lanjutkan T22" tanpa
+  spesifikasi): jadwal **harian pukul 06:00 waktu lokal mesin**, rentang = **kemarin (D-1)**,
+  semua hari; per akun bisa diubah jamnya / dinonaktifkan dari halaman Akun; override manual =
+  Job Baru tetap ada. Zona waktu = lokal mesin (operator ID ≈ zona akun POS). Owner dapat
+  mengubah default ini kapan saja lewat konfigurasi per akun.
+- **2026-11-19 — Q4 terjawab: Electron** (keputusan owner via form): wrapper desktop membungkus
+  UI localhost yang ada; sidecar Python + Camoufox terbundel dalam installer. **Cakupan bukti:
+  Win-first** — installer Windows dibangun + diuji end-to-end di mesin developer sekarang;
+  build Mac/Linux menyusul saat mesin uji tersedia (acceptance M2 "3 OS tanpa bantuan developer"
+  belum terobservasi sampai saat itu). Q1/Q2 (kolom Excel final + target FTP) belum ada dari
+  tim server → T26 tetap blocked.
+- **2026-11-19 — T28 evaluasi SQLCipher: GO (adopsi saat rollout M2).** Bukti empiris mesin ini
+  (Python 3.9 Win): wheel `sqlcipher3==0.6.5` (cp39-win_amd64, SQLite 3.54.1) terpasang bersih;
+  `PRAGMA journal_mode=WAL` jalan terenkripsi; baca tanpa kunci ditolak (DatabaseError);
+  header file bukan `SQLite format 3` dan nol bocoran plaintext baris; overhead micro-bench
+  2000 insert tidak signifikan (4 ms vs 5 ms sqlite3). Kunci tetap master key OS keychain (S3).
+  Implementasi + migrasi DB plaintext→terenkripsi (`sqlcipher_export`) dijadwalkan bersama
+  rollout M2 karena DB operator sudah berisi data; wheel Mac/Linux diverifikasi saat build M2.
+  Sampai adopsi M2, residual S4 tetap: rekomendasi disk encryption OS (BitLocker/FileVault/LUKS).
+  `pysqlcipher3` = sdist saja (beban kompilasi) → tidak dipilih.
+
 ## 13. Acceptance Criteria (observable, per fitur wajib)
 
 **W1 — Job runner + UI**

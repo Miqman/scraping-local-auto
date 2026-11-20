@@ -1,0 +1,47 @@
+{
+  "name": "scraping-local-auto-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "T24 (Q4 owner 2026-11-19): wrapper Electron membungkus UI localhost + sidecar Python/Camoufox terbundel. Win-first.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist:win": "electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "id.zeepos.scraping-local-auto",
+    "productName": "Scraping Lokal Otomatis",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js"
+    ],
+    "extraResources": [
+      {
+        "from": "../sidecar/dist/sla-sidecar",
+        "to": "sidecar"
+      },
+      {
+        "from": "../vendor/camoufox",
+        "to": "camoufox"
+      }
+    ],
+    "win": {
+      "signAndEditExecutable": false,
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "runAfterFinish": false,
+      "deleteAppDataOnUninstall": false
+    }
+  }
+}

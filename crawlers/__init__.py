@@ -9,6 +9,7 @@ from .demo import DemoCrawler
 from .siberpos import SiberPosCrawler
 from .esbv2 import EsbV2Crawler
 from .majoo import MajooCrawler
+from .loyverse import LoyverseCrawler
 
 
 @dataclass(frozen=True)
@@ -32,7 +33,8 @@ REGISTRY = [
             "Cloudflare bila muncul (pause user) + CSRF Yii", True, EsbV2Crawler, milestone="M1"),
     PosMeta("majoo", "Majoo", "https://dashboard.majoo.id", 31,
             "Turnstile latar belakang (Camoufox; pause user bila interaktif)", True, MajooCrawler, milestone="M1"),
-    PosMeta("loyverse", "Loyverse", "https://loyverse.com", 31, "reCAPTCHA", False, milestone="M1"),
+    PosMeta("loyverse", "Loyverse", "https://loyverse.com", 31,
+            "reCAPTCHA v2 invisible (Camoufox; pause user bila interaktif)", True, LoyverseCrawler, milestone="M1"),
     PosMeta("kasirstaff", "KasirStaffPOS", "(URL menunggu Q3)", 31, "belum diketahui", False, milestone="M1"),
 ]
 
