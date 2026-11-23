@@ -51,6 +51,15 @@
           value="{{ form.date_to if form else default_to }}">
       </div>
     </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="text-[11px] text-subtle">Preset:</span>
+      <button type="button" onclick="setDatePreset('yesterday')" class="text-[12px] text-primary hover:underline cursor-pointer">Kemarin</button>
+      <button type="button" onclick="setDatePreset('7d')" class="text-[12px] text-primary hover:underline cursor-pointer">7 hari</button>
+      <button type="button" onclick="setDatePreset('30d')" class="text-[12px] text-primary hover:underline cursor-pointer">30 hari</button>
+      <button type="button" onclick="setDatePreset('month')" class="text-[12px] text-primary hover:underline cursor-pointer">Bulan ini</button>
+      <button type="button" id="preset-last" onclick="setDatePreset('last')" class="text-[12px] text-primary hover:underline cursor-pointer{% if not (selected_account_id is defined and selected_account_id) %} hidden{% endif %}">Lanjut job terakhir</button>
+      <span id="last-job-info" class="text-[11px] text-subtle{% if not (selected_account_id is defined and selected_account_id) %} hidden{% endif %}"></span>
+    </div>
 
     <div>
       <div class="flex items-center justify-between mb-1.5">

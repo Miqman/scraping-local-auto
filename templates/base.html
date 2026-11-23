@@ -10,17 +10,17 @@
   <script src="/static/lucide.min.js?v=6" defer></script>
   <script src="/static/app.js?v=6" defer></script>
 </head>
-<body class="min-h-screen flex" hx-headers='{"X-CSRF-Token": "{{ csrf }}"}'>
+<body class="h-screen overflow-hidden flex" hx-headers='{"X-CSRF-Token": "{{ csrf }}"}'>
 
   <!-- Mobile sidebar backdrop -->
   <div id="sidebar-backdrop" class="fixed inset-0 bg-slate-900/30 backdrop-blur-[1px] z-30 hidden lg:hidden" onclick="toggleSidebar()"></div>
 
   <!-- Sidebar 240px (PRD §7.1) -->
-  <aside id="sidebar" class="fixed inset-y-0 left-0 z-40 w-60 bg-surface border-r border-hairline flex flex-col transition-transform duration-200 ease-out -translate-x-full lg:translate-x-0 lg:static lg:shrink-0">
-    <div class="h-16 px-5 flex items-center justify-between shrink-0">
+  <aside id="sidebar" class="fixed inset-y-0 left-0 z-40 w-60 bg-surface border-r border-hairline flex flex-col transition-all duration-200 ease-out -translate-x-full lg:translate-x-0 lg:static lg:shrink-0">
+    <div class="h-16 px-3 flex items-center justify-between shrink-0">
       <a href="/" class="flex items-center gap-3 group">
-        <div class="w-8 h-8 rounded-control bg-primary text-white font-bold text-sm flex items-center justify-center group-hover:bg-primary-hover transition-colors">SL</div>
-        <div class="leading-tight">
+        <div class="w-8 h-8 rounded-control bg-primary text-white font-bold text-sm flex items-center justify-center group-hover:bg-primary-hover transition-colors shrink-0">SL</div>
+        <div class="leading-tight sidebar-label">
           <div class="text-sm font-bold text-ink tracking-tight">Scraping Lokal</div>
           <div class="text-[11px] font-medium text-subtle">Otomatis · {{ app_version }}</div>
         </div>
@@ -30,45 +30,57 @@
       </button>
     </div>
 
-    <nav class="flex-1 overflow-y-auto px-3 py-3 space-y-6" aria-label="Navigasi utama">
+    <nav class="flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 space-y-6" aria-label="Navigasi utama">
       <div>
-        <div class="px-3 mb-2 overline text-[10px]">Workspace</div>
+        <div class="px-3 mb-2 overline text-[10px] sidebar-label">Workspace</div>
         <ul class="space-y-0.5">
           <li>
-            <a href="/" class="flex items-center gap-3 px-3 py-2 rounded-control text-[13px] font-medium transition-colors {% if active_page == 'dashboard' %}bg-primary-subtle text-primary font-semibold{% else %}text-muted hover:text-ink hover:bg-surface-hover{% endif %}">
-              <i data-lucide="layout-dashboard" class="w-4 h-4 stroke-[1.75]"></i><span>Dashboard</span>
+            <a href="/" title="Dashboard" class="flex items-center gap-3 px-3 py-2 rounded-control text-[13px] font-medium transition-colors {% if active_page == 'dashboard' %}bg-primary-subtle text-primary font-semibold{% else %}text-muted hover:text-ink hover:bg-surface-hover{% endif %}">
+              <i data-lucide="layout-dashboard" class="w-4 h-4 stroke-[1.75] shrink-0"></i><span class="sidebar-label">Dashboard</span>
             </a>
           </li>
           <li>
-            <a href="/jobs/new" class="flex items-center gap-3 px-3 py-2 rounded-control text-[13px] font-medium transition-colors {% if active_page == 'new-job' %}bg-primary-subtle text-primary font-semibold{% else %}text-muted hover:text-ink hover:bg-surface-hover{% endif %}">
-              <i data-lucide="circle-plus" class="w-4 h-4 stroke-[1.75]"></i><span>Job Baru</span>
+            <a href="/jobs/new" title="Job Baru" class="flex items-center gap-3 px-3 py-2 rounded-control text-[13px] font-medium transition-colors {% if active_page == 'new-job' %}bg-primary-subtle text-primary font-semibold{% else %}text-muted hover:text-ink hover:bg-surface-hover{% endif %}">
+              <i data-lucide="circle-plus" class="w-4 h-4 stroke-[1.75] shrink-0"></i><span class="sidebar-label">Job Baru</span>
             </a>
           </li>
         </ul>
       </div>
       <div>
-        <div class="px-3 mb-2 overline text-[10px]">Konfigurasi</div>
+        <div class="px-3 mb-2 overline text-[10px] sidebar-label">Konfigurasi</div>
         <ul class="space-y-0.5">
           <li>
-            <a href="/accounts" class="flex items-center gap-3 px-3 py-2 rounded-control text-[13px] font-medium transition-colors {% if active_page == 'accounts' %}bg-primary-subtle text-primary font-semibold{% else %}text-muted hover:text-ink hover:bg-surface-hover{% endif %}">
-              <i data-lucide="key-round" class="w-4 h-4 stroke-[1.75]"></i><span>Akun Merchant</span>
+            <a href="/accounts" title="Akun Merchant" class="flex items-center gap-3 px-3 py-2 rounded-control text-[13px] font-medium transition-colors {% if active_page == 'accounts' %}bg-primary-subtle text-primary font-semibold{% else %}text-muted hover:text-ink hover:bg-surface-hover{% endif %}">
+              <i data-lucide="key-round" class="w-4 h-4 stroke-[1.75] shrink-0"></i><span class="sidebar-label">Akun Merchant</span>
+            </a>
+          </li>
+          <li>
+            <a href="/schedules" title="Jadwal Otomatis" class="flex items-center gap-3 px-3 py-2 rounded-control text-[13px] font-medium transition-colors {% if active_page == 'schedules' %}bg-primary-subtle text-primary font-semibold{% else %}text-muted hover:text-ink hover:bg-surface-hover{% endif %}">
+              <i data-lucide="calendar-clock" class="w-4 h-4 stroke-[1.75] shrink-0"></i><span class="sidebar-label">Jadwal Otomatis</span>
             </a>
           </li>
         </ul>
       </div>
     </nav>
 
-    <div class="px-5 py-4 border-t border-hairline space-y-1.5">
-      <div class="flex items-center gap-2 text-[11px] font-medium text-success">
-        <i data-lucide="shield-check" class="w-3.5 h-3.5"></i> Loopback-only · CSRF aktif
+    <div class="px-3 py-3 border-t border-hairline space-y-2 shrink-0">
+      <button id="sidebar-mini-toggle" onclick="toggleSidebarMini()" class="hidden lg:flex w-full items-center gap-3 px-3 py-2 rounded-control text-[13px] font-medium text-muted hover:text-ink hover:bg-surface-hover transition-colors cursor-pointer" title="Ciutkan sidebar" aria-label="Ciutkan sidebar">
+        <i data-lucide="panel-left-close" class="w-4 h-4 stroke-[1.75] shrink-0 sidebar-icon-close"></i>
+        <i data-lucide="panel-left-open" class="w-4 h-4 stroke-[1.75] shrink-0 sidebar-icon-open"></i>
+        <span class="sidebar-label">Ciutkan</span>
+      </button>
+      <div class="sidebar-label px-2 space-y-1.5">
+        <div class="flex items-center gap-2 text-[11px] font-medium text-success">
+          <i data-lucide="shield-check" class="w-3.5 h-3.5"></i> Loopback-only · CSRF aktif
+        </div>
+        <div class="text-[11px] text-subtle leading-snug">Data & kredensial tersimpan lokal terenkripsi. Tidak ada request eksternal.</div>
       </div>
-      <div class="text-[11px] text-subtle leading-snug">Data & kredensial tersimpan lokal terenkripsi. Tidak ada request eksternal.</div>
     </div>
   </aside>
 
   <!-- Kolom utama -->
-  <div class="flex-1 flex flex-col min-w-0">
-    <header class="h-16 bg-surface border-b border-hairline px-4 sm:px-8 flex items-center justify-between gap-4 sticky top-0 z-20 shrink-0">
+  <div class="flex-1 flex flex-col min-w-0 h-screen">
+    <header class="h-16 bg-surface border-b border-hairline px-4 sm:px-8 flex items-center justify-between gap-4 z-20 shrink-0">
       <div class="flex items-center gap-3 min-w-0">
         <button onclick="toggleSidebar()" class="lg:hidden p-2 -ml-2 rounded-control text-muted hover:bg-hairline-subtle" aria-label="Buka navigasi">
           <i data-lucide="menu" class="w-5 h-5"></i>
@@ -85,7 +97,8 @@
       </div>
     </header>
 
-    <main class="flex-1 px-4 sm:px-8 py-7 max-w-[1440px] w-full mx-auto">
+    <main class="flex-1 overflow-y-auto px-4 sm:px-8 py-7 w-full">
+      <div class="max-w-[1440px] w-full mx-auto">
       {% if keyfile_warning %}
       <div class="mb-6 flex items-start gap-3 rounded-card border border-warning/30 bg-warning-bg px-4 py-3">
         <i data-lucide="triangle-alert" class="w-4 h-4 text-warning mt-0.5 shrink-0"></i>
@@ -97,6 +110,7 @@
       </div>
       {% endif %}
       {% block content %}{% endblock %}
+      </div>
     </main>
   </div>
 

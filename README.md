@@ -1,8 +1,8 @@
 # scraping-local-auto
 
 Aplikasi web **localhost** untuk scraping transaksi POS di komputer operator — fallback job yang gagal di server
-(IP diblok / captcha tak tertembus). Semi-otomatis: browser headed terbuka, manusia menyelesaikan captcha/OTP sekali,
-aplikasi lanjut sendiri sampai Excel siap kirim.
+(IP diblok / captcha tak tertembus). Semi-otomatis: dev menampilkan browser headed agar manusia menyelesaikan
+captcha/OTP sekali; build exe headless (tanpa jendela). Aplikasi lanjut sendiri sampai Excel siap kirim.
 
 Sumber kebenaran produk: [`prd.md`](prd.md) · checklist hidup: [`tasks.md`](tasks.md) · design system:
 **Adminator Enterprise UI v3.1.0** (token terkunci di `tailwind/input.css`).
@@ -17,10 +17,11 @@ npm run build:css     # Tailwind v4 -> static/app.css
 
 # runtime Python:
 python -m pip install -r requirements.txt
-python -m playwright install chromium     # fallback bila Camoufox belum di-fetch
-python -m camoufox fetch                  # opsional: browser anti-detect utama (PRD §8)
+python -m camoufox fetch                  # wajib: browser anti-detect (Cloudflare Turnstile); tanpa fallback
 
-python -m app           # -> http://127.0.0.1:8765 terbuka otomatis di browser
+python3 -m app          # -> http://127.0.0.1:8765 terbuka otomatis di browser
+# Windows: bila `python` menunjuk Python 2.7 (C:\Python27 menang PATH), pakai `python3`
+# (shim pyenv 3.9) atau geser folder shims pyenv ke atas C:\Python27 di PATH.
 ```
 
 Acceptance run M0 (PRD §13 + edge cases E1–E18, app dikelola subprocess sendiri):
@@ -63,7 +64,8 @@ Gate login muncul sekali per profil browser; selesaikan checkbox di browser scra
 **"Sudah selesai"** di Detail Job (fallback). Auto-resume terdeteksi ≤5 detik (polling 1s).
 
 Env knob dev: `SLA_PORT` (default 8765), `SLA_GATE_TIMEOUT_SECONDS` (default 600 = 10 menit sesuai E1;
-acceptance memakai 8), `SLA_DATA_DIR`.
+acceptance memakai 8), `SLA_DATA_DIR`, `SLA_HEADLESS` (`1` = scraper tanpa jendela browser; dev default
+headed agar captcha bisa diselesaikan, build exe/Electron otomatis headless).
 
 ## SiberPOS (target produksi)
 
@@ -72,7 +74,8 @@ Alur di-port dari projek referensi `scraping-efd-python/utils/` (**proxy diabaik
 
 1. Profil Camoufox per akun → buka `https://my.siberpos.com/` → **reuse sesi** bila cookie `XSRF-TOKEN` masih ada.
 2. Gate Cloudflare/Turnstile: auto-click checkbox sekali + grace 15s; bila interaktif → `waiting_user`
-   (operator menyelesaikan sekali di browser headed; auto-resume ≤5s; fallback "Sudah selesai"; timeout 10 menit).
+   (dev: operator menyelesaikan sekali di browser headed; exe: headless, auto-resume ≤5s bila gate lolos
+   sendiri, fallback "Sudah selesai"; timeout 10 menit).
 3. Login React-Aria (`input[name=username]` + password) dengan interleave klik submit + klik Turnstile
    (stale-abort 12s seperti referensi); sukses = cookie `XSRF-TOKEN` terbit dan bukan halaman login.
 4. Cabang = `all` ("Semua Outlet", agregat seperti referensi `outlet=all`).
@@ -83,20 +86,28 @@ Alur di-port dari projek referensi `scraping-efd-python/utils/` (**proxy diabaik
 Kredensial merchant disimpan terenkripsi via halaman Akun (file plaintext dari tim jangan di-commit — sudah di-.gitignore).
 Dump DOM tersanitasi untuk diagnosa selector: env `SLA_DEBUG_DUMP=1` → `data/debug/siberpos_*.html` (tanpa nilai input/isi script).
 
-## Jadwal otomatis (T22, story 6)
+## Jadwal otomatis (T22, story 6 — v2 interval menit)
 
-Default Q5 (PRD §12 keputusan 2026-11-19): **harian pukul 06:00 waktu lokal mesin, semua hari,
-rentang = kemarin (D-1)**. Konfigurasi per akun di halaman **Akun Merchant → kartu "Jadwal otomatis"**
-(jam `HH:MM` + toggle Aktif; opt-in, default nonaktif). Scheduler in-process (`app/scheduler.py`,
-tick 30 detik) membuat job `queued` — runner mengambilnya seperti job manual: batas E6 (akun sama
-antri) / E7 (maks 2 paralel), retry, export, dan status live semuanya sama. Override manual = **Job Baru**.
+**Interval menit per akun (minimal 1, default 60)**, opt-in. UI: halaman **Jadwal Otomatis** (menu
+sidebar Konfigurasi) berupa accordion per POS (`<details>` native) — klik POS → daftar akun +
+input interval menit + toggle Aktif + tombol simpan. Scheduler in-process (`app/scheduler.py`,
+tick 10 detik) membuat job `queued` yang **menyambung rentang job terakhir akun** (mulai H+1 setelah
+`date_to` terakhir sampai hari ini; job pertama akun = kemarin..hari ini) dan **memakai ulang cabang
+job terakhir** (`db.last_job_branches`; akun belum punya job → auto-fetch semua) — runner mengambilnya
+seperti job manual: batas E6 (akun sama antri) / E7 (maks 2 paralel), retry, export, status live sama.
+Override manual = **Job Baru**.
 
-- **At-most-once per hari:** `last_run_date` ditandai sebelum job dibuat — tick berikutnya tidak mendobel.
-- **Catch-up:** aplikasi dibuka setelah jam jadwal → job tetap dibuat di hari yang sama.
-  Aplikasi tutup seharian → tidak ada backfill hari sebelumnya.
-- POS yang crawler-nya belum tersedia (mis. `kasirstaff`) dilewati otomatis + log peringatan.
-- Hapus akun → jadwal ikut terhapus (CASCADE). Zona waktu = lokal mesin (operator ID ≈ zona akun POS).
-- Self-check logika jatuh tempo: `python -m app.scheduler`.
+- **Hanya saat aplikasi terbuka** — scheduler hidup di proses app; tutup = tidak jalan, tanpa backfill.
+- **At-most-once per interval:** `last_run_at` ditandai sebelum job dibuat; due bila `now >= last_run_at + interval`.
+- **Catch-up:** interval sudah lewat saat app dibuka → langsung due sekali (bukan backfill hari terlewat).
+- **Skip akun busy** (ada job queued/running/waiting) tanpa menandai — jangan menumpuk antrian pada interval pendek.
+- **Tahan bila job terakhir gagal `[auth]`** sampai retry/manual — cegah lockout (1440 login/hari pada interval 1 menit).
+- **Purge retensi 90 hari** dijalankan scheduler sekali per ganti hari (interval pendek = banyak job).
+- POS yang crawler-nya belum tersedia (mis. `kasirstaff`) dilewati + log peringatan.
+- Hapus akun → jadwal ikut terhapus (CASCADE). Zona waktu = lokal mesin.
+- **Migrasi:** DB lama (`run_at`/`last_run_date`) → `interval_minutes`/`last_run_at` otomatis saat `init()`;
+  jadwal harian lama aktif dipertahankan sebagai interval 1440 menit.
+- Self-check logika: `python -m app.scheduler`.
 
 ## Desktop installer (T24, Win-first)
 
@@ -117,7 +128,7 @@ npm run dist:win                         # -> dist/Scraping Lokal Otomatis Setup
 - Install: dobel-klik setup (NSIS oneClick per-user, tanpa admin) atau silent `setup.exe /S`.
   Data app terpasang: `%APPDATA%/scraping-local-auto-desktop/data` (terpisah dari repo).
 - `desktop/main.js`: precheck port dipakai → dialog; single-instance lock; spawn sidecar
-  (`SLA_NO_BROWSER=1`, `SLA_CAMOUFOX_DIR=resources/camoufox`); tunggu `/healthz`; buka window;
+  (`SLA_NO_BROWSER=1`, `SLA_HEADLESS=1`, `SLA_CAMOUFOX_DIR=resources/camoufox`); tunggu `/healthz`; buka window;
   sidecar mati → dialog + recovery E5 saat buka ulang.
 - Catatan build Windows: installer **unsigned** (`signAndEditExecutable:false`); cache
   winCodeSign electron-builder gagal extract symlink tanpa privilege Windows → pre-extract
@@ -150,7 +161,7 @@ npm run dist:win                         # -> dist/Scraping Lokal Otomatis Setup
 3. Selector yang hilang harus disebut di pesan `ui_changed` — itu laporan ke developer pusat (E15).
 
 Runner mengurus sisanya: antrian per akun (E6), maks 2 paralel (E7), attempt ≤3 + re-login ≤2 (E3/S7),
-pause/resume captcha (W2), commit per cabang + dedup UNIQUE (W3/E10), recovery restart (E5).
+pause/resume captcha (W2), commit per cabang + dedup per akun lintas job (W3/E10), recovery restart (E5).
 
 ## Keamanan (PRD §11)
 
@@ -172,7 +183,7 @@ pause/resume captcha (W2), commit per cabang + dedup UNIQUE (W3/E10), recovery r
 | Job lama `antri` | E6 akun sama sedang dipakai, atau E7 sudah 2 job paralel. Tunggu atau pakai akun lain. |
 | Cabang `[auth]` | Password merchant berubah — edit akun (password write-only), lalu retry manual. Tidak ada auto-retry agar akun tidak lockout (S7). |
 | Cabang `[ui_changed]` | Website POS berubah — **Salin detail error** (redacted) dan kirim ke developer pusat. |
-| Browser tidak terbuka | Jalankan `python -m playwright install chromium` (atau `python -m camoufox fetch`). MVP selalu headed. |
+| Browser tidak terbuka | Jalankan `python -m camoufox fetch` (Camoufox wajib; tak ada fallback Chromium). |
 | Port 8765 dipakai | Set `SLA_PORT` lain, atau matikan proses lama. |
 | `ImportError: DLL load failed ... _rust` (Windows, Python 3.9.0) | `python3.dll` 3.9.0 belum ekspor `PyCMethod_New` yang dibutuhkan cryptography ≥42. `requirements.txt` sudah memakai marker `python_version` (3.9 → cryptography 41.x). Bila terlanjur: `pip install cryptography==41.0.7` atau upgrade Python ≥3.10 (PRD §8: 3.12). |
 

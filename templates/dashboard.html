@@ -23,7 +23,7 @@
     <i data-lucide="hand" class="w-4 h-4 text-warning mt-0.5 shrink-0"></i>
     <div class="text-[13px] text-ink leading-relaxed">
       <span class="font-semibold text-warning">{{ stats.waiting_user }} job menunggu user.</span>
-      Selesaikan captcha/OTP di browser yang terbuka — aplikasi lanjut otomatis. Buka Detail Job untuk tombol fallback "Sudah selesai".
+      Captcha/OTP sedang menunggu — umumnya lolos otomatis. Buka Detail Job untuk tombol fallback "Sudah selesai" atau retry cabang.
     </div>
   </div>
 </div>
@@ -70,6 +70,7 @@
     <input type="hidden" id="f-page" name="page" value="1">
     <input type="hidden" id="f-sort" name="sort" value="id">
     <input type="hidden" id="f-dir" name="dir" value="desc">
+    <input type="hidden" id="f-view" name="view" value="{{ filters.view }}">
   </div>
 </div>
 

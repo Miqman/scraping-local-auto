@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS job_branches (
 );
 CREATE TABLE IF NOT EXISTS transactions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     job_branch_id INTEGER NOT NULL REFERENCES job_branches(id) ON DELETE CASCADE,
     trx_id TEXT NOT NULL,
     trx_date TEXT NOT NULL,
@@ -50,7 +51,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     total_price REAL,
     total_tax REAL,
     raw_json TEXT NOT NULL,
-    UNIQUE(job_branch_id, trx_id)
+    UNIQUE(account_id, trx_id)
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
 CREATE INDEX IF NOT EXISTS idx_branches_job ON job_branches(job_id);
@@ -89,13 +90,57 @@ def init() -> None:
         c.execute("CREATE TABLE IF NOT EXISTS sessions ("
                   "account_id INTEGER PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,"
                   "token_enc BLOB NOT NULL, updated_at TEXT NOT NULL)")
-        # T22: jadwal harian per akun (story 6; Q5 default PRD §12 2026-11-19)
+        # Jadwal interval menit per akun (hanya berjalan saat aplikasi terbuka)
         c.execute("CREATE TABLE IF NOT EXISTS schedules ("
                   "account_id INTEGER PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,"
                   "enabled INTEGER NOT NULL DEFAULT 0,"
-                  "run_at TEXT NOT NULL DEFAULT '06:00',"
-                  "last_run_date TEXT,"
+                  "interval_minutes INTEGER NOT NULL DEFAULT 60,"
+                  "last_run_at TEXT,"
                   "updated_at TEXT NOT NULL)")
+        # Migrasi idempoten: jadwal harian lama (run_at) -> interval 1440 menit
+        cols = [r["name"] for r in c.execute("PRAGMA table_info(schedules)")]
+        if "run_at" in cols:
+            c.execute("CREATE TABLE schedules_new ("
+                      "account_id INTEGER PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,"
+                      "enabled INTEGER NOT NULL DEFAULT 0,"
+                      "interval_minutes INTEGER NOT NULL DEFAULT 60,"
+                      "last_run_at TEXT,"
+                      "updated_at TEXT NOT NULL)")
+            c.execute("INSERT INTO schedules_new(account_id,enabled,interval_minutes,last_run_at,updated_at) "
+                      "SELECT account_id, enabled, 1440,"
+                      " CASE WHEN last_run_date IS NOT NULL THEN last_run_date || 'T' || run_at || ':00' END,"
+                      " updated_at FROM schedules")
+            c.execute("DROP TABLE schedules")
+            c.execute("ALTER TABLE schedules_new RENAME TO schedules")
+        # Migrasi idempoten: dedup transaksi per akun (lintas job), bukan per cabang.
+        # Baris lama tanpa account_id -> backfill dari job; duplikat (account,trx_id)
+        # dibuang mempertahankan versi terbaru (job_branch_id terbesar = run terakhir).
+        tcols = [r["name"] for r in c.execute("PRAGMA table_info(transactions)")]
+        if "account_id" not in tcols:
+            c.execute("CREATE TABLE transactions_new ("
+                      "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                      "account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,"
+                      "job_branch_id INTEGER NOT NULL REFERENCES job_branches(id) ON DELETE CASCADE,"
+                      "trx_id TEXT NOT NULL, trx_date TEXT NOT NULL,"
+                      "grand_total REAL, total_price REAL, total_tax REAL,"
+                      "raw_json TEXT NOT NULL, UNIQUE(account_id, trx_id))")
+            c.execute("INSERT INTO transactions_new(account_id,job_branch_id,trx_id,trx_date,"
+                      "grand_total,total_price,total_tax,raw_json) "
+                      "SELECT j.account_id, t.job_branch_id, t.trx_id, t.trx_date,"
+                      " t.grand_total, t.total_price, t.total_tax, t.raw_json "
+                      "FROM transactions t JOIN job_branches b ON b.id=t.job_branch_id "
+                      "JOIN jobs j ON j.id=b.job_id "
+                      "WHERE t.id IN (SELECT MAX(t2.id) FROM transactions t2 "
+                      " JOIN job_branches b2 ON b2.id=t2.job_branch_id "
+                      " JOIN jobs j2 ON j2.id=b2.job_id "
+                      " GROUP BY j2.account_id, t2.trx_id)")
+            c.execute("DROP TABLE transactions")
+            c.execute("ALTER TABLE transactions_new RENAME TO transactions")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_trx_branch ON transactions(job_branch_id)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_trx_account ON transactions(account_id)")
+            c.execute("UPDATE job_branches SET trx_count=(SELECT COUNT(*) FROM transactions "
+                      "WHERE job_branch_id=job_branches.id)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_trx_account ON transactions(account_id)")
 
 
 def recover_interrupted() -> int:
@@ -316,9 +361,12 @@ def active_jobs() -> list:
         ).fetchall()
 
 
-def job_stats() -> dict:
+def job_stats(latest: bool = True) -> dict:
+    """Hitung job per status. latest=True: hanya job terbaru per akun (konsisten dgn tabel)."""
+    scope = ("WHERE id IN (SELECT MAX(j2.id) FROM jobs j2 GROUP BY j2.account_id)"
+             if latest else "")
     with conn() as c:
-        rows = c.execute("SELECT status, COUNT(*) n FROM jobs GROUP BY status").fetchall()
+        rows = c.execute(f"SELECT status, COUNT(*) n FROM jobs {scope} GROUP BY status").fetchall()
     stats = {s: 0 for s in ("queued", "running", "waiting_user", "done", "partial", "failed")}
     for r in rows:
         stats[r["status"]] = r["n"]
@@ -327,7 +375,7 @@ def job_stats() -> dict:
 
 def list_jobs(q: str = "", status: str = "", pos: str = "", date_from: str = "",
               date_to: str = "", sort: str = "id", direction: str = "desc",
-              page: int = 1, page_size: int = 10) -> dict:
+              page: int = 1, page_size: int = 10, latest: bool = True) -> dict:
     sort_col = {"id": "j.id", "created_at": "j.created_at", "status": "j.status",
                 "branches": "done_count"}.get(sort, "j.id")
     direction = "ASC" if direction == "asc" else "DESC"
@@ -347,6 +395,9 @@ def list_jobs(q: str = "", status: str = "", pos: str = "", date_from: str = "",
     if date_to:
         where.append("j.date_from <= ?")
         vals.append(date_to)
+    if latest:
+        # job terbaru per akun saja (scheduler interval -> banyak run berulang)
+        where.append("j.id IN (SELECT MAX(j2.id) FROM jobs j2 GROUP BY j2.account_id)")
     w = ("WHERE " + " AND ".join(where)) if where else ""
     with conn() as c:
         total = c.execute(
@@ -357,13 +408,15 @@ def list_jobs(q: str = "", status: str = "", pos: str = "", date_from: str = "",
         rows = c.execute(
             f"SELECT j.*, a.label AS account_label, "
             f"(SELECT COUNT(*) FROM job_branches b WHERE b.job_id=j.id) AS branch_total, "
-            f"(SELECT COUNT(*) FROM job_branches b WHERE b.job_id=j.id AND b.status='done') AS done_count "
+            f"(SELECT COUNT(*) FROM job_branches b WHERE b.job_id=j.id AND b.status='done') AS done_count, "
+            f"(SELECT COUNT(*) FROM transactions t JOIN job_branches b ON b.id=t.job_branch_id WHERE b.job_id=j.id) AS trx_count, "
+            f"(SELECT COALESCE(s.enabled,0) FROM schedules s WHERE s.account_id=j.account_id) AS is_scheduled "
             f"FROM jobs j JOIN accounts a ON a.id=j.account_id {w} "
             f"ORDER BY {sort_col} {direction}, j.id DESC LIMIT ? OFFSET ?",
             vals + [page_size, (page - 1) * page_size],
         ).fetchall()
     return {"rows": rows, "total": total, "page": page, "pages": pages,
-            "page_size": page_size}
+            "page_size": page_size, "latest": latest}
 
 
 def delete_job(job_id: int) -> None:
@@ -374,25 +427,46 @@ def delete_job(job_id: int) -> None:
 # ---------- transactions ----------
 
 def upsert_transactions(branch_id: int, rows: list) -> int:
-    """UNIQUE(job_branch_id,trx_id) + upsert -> retry tidak mendobel (E10, W3)."""
+    """Dedup per akun (account_id,trx_id) lintas job: trx sudah ada & identik -> skip;
+    isi berubah -> update di tempat + pindah ke cabang run ini (versi terbaru menang).
+    Retry dalam cabang tetap tidak mendobel (E10, W3). Return jumlah baris baru."""
     import json
     inserted = 0
     with _write_lock, conn() as c:
+        acct = c.execute("SELECT j.account_id FROM job_branches b JOIN jobs j ON j.id=b.job_id "
+                         "WHERE b.id=?", (branch_id,)).fetchone()
+        if acct is None:
+            return 0
+        account_id = acct["account_id"]
+        touched = set()
         for r in rows:
             raw = json.dumps(r, ensure_ascii=False, sort_keys=True)
-            cur = c.execute(
-                "INSERT INTO transactions(job_branch_id,trx_id,trx_date,grand_total,total_price,total_tax,raw_json) "
-                "VALUES(?,?,?,?,?,?,?) ON CONFLICT(job_branch_id,trx_id) DO UPDATE SET "
-                "trx_date=excluded.trx_date, grand_total=excluded.grand_total, "
-                "total_price=excluded.total_price, total_tax=excluded.total_tax, raw_json=excluded.raw_json",
-                (branch_id, str(r.get("trx_id")), str(r.get("trx_date", "")),
-                 _f(r.get("grand_total")), _f(r.get("total_price")), _f(r.get("total_tax")), raw),
-            )
-            inserted += cur.rowcount
-        c.execute(
-            "UPDATE job_branches SET trx_count=(SELECT COUNT(*) FROM transactions WHERE job_branch_id=?) WHERE id=?",
-            (branch_id, branch_id),
-        )
+            trx_id = str(r.get("trx_id"))
+            old = c.execute("SELECT id, job_branch_id, raw_json FROM transactions "
+                            "WHERE account_id=? AND trx_id=?", (account_id, trx_id)).fetchone()
+            if old is None:
+                c.execute(
+                    "INSERT INTO transactions(account_id,job_branch_id,trx_id,trx_date,"
+                    "grand_total,total_price,total_tax,raw_json) VALUES(?,?,?,?,?,?,?,?)",
+                    (account_id, branch_id, trx_id, str(r.get("trx_date", "")),
+                     _f(r.get("grand_total")), _f(r.get("total_price")), _f(r.get("total_tax")), raw),
+                )
+                inserted += 1
+                touched.add(branch_id)
+            elif old["raw_json"] != raw or old["job_branch_id"] != branch_id:
+                # isi berubah ATAU milik run lain -> versi terbaru pindah ke cabang ini
+                touched.add(old["job_branch_id"])
+                c.execute(
+                    "UPDATE transactions SET job_branch_id=?, trx_date=?, grand_total=?, "
+                    "total_price=?, total_tax=?, raw_json=? WHERE id=?",
+                    (branch_id, str(r.get("trx_date", "")), _f(r.get("grand_total")),
+                     _f(r.get("total_price")), _f(r.get("total_tax")), raw, old["id"]),
+                )
+                touched.add(branch_id)
+            # else: identik & sudah di cabang ini -> skip (tidak mendobel)
+        for bid in touched:
+            c.execute("UPDATE job_branches SET trx_count=(SELECT COUNT(*) FROM transactions "
+                      "WHERE job_branch_id=?) WHERE id=?", (bid, bid))
     return inserted
 
 
@@ -478,7 +552,7 @@ def delete_session_token(account_id: int) -> None:
         c.execute("DELETE FROM sessions WHERE account_id=?", (account_id,))
 
 
-# ---------- schedules (T22) ----------
+# ---------- schedules (interval menit per akun) ----------
 
 def get_schedule(account_id: int):
     with conn() as c:
@@ -486,28 +560,69 @@ def get_schedule(account_id: int):
 
 
 def list_schedules() -> list:
-    """Semua akun + jadwalnya (LEFT JOIN; default nonaktif 06:00 bila belum ada baris)."""
+    """Semua akun + jadwalnya (LEFT JOIN; default nonaktif tiap 60 menit bila belum ada baris)."""
     with conn() as c:
         return c.execute(
             "SELECT a.id AS account_id, a.label, a.pos_code, a.username,"
-            " COALESCE(s.enabled, 0) AS enabled, COALESCE(s.run_at, '06:00') AS run_at,"
-            " s.last_run_date"
+            " COALESCE(s.enabled, 0) AS enabled, COALESCE(s.interval_minutes, 60) AS interval_minutes,"
+            " s.last_run_at"
             " FROM accounts a LEFT JOIN schedules s ON s.account_id = a.id"
             " ORDER BY a.pos_code, a.label").fetchall()
 
 
-def upsert_schedule(account_id: int, enabled: bool, run_at: str) -> None:
+def upsert_schedule(account_id: int, enabled: bool, interval_minutes: int) -> None:
     ts = now()
     with conn() as c:
         c.execute(
-            "INSERT INTO schedules(account_id,enabled,run_at,updated_at) VALUES(?,?,?,?) "
+            "INSERT INTO schedules(account_id,enabled,interval_minutes,updated_at) VALUES(?,?,?,?) "
             "ON CONFLICT(account_id) DO UPDATE SET enabled=excluded.enabled,"
-            " run_at=excluded.run_at, updated_at=excluded.updated_at",
-            (account_id, int(enabled), run_at, ts))
+            " interval_minutes=excluded.interval_minutes, updated_at=excluded.updated_at",
+            (account_id, int(enabled), interval_minutes, ts))
 
 
-def mark_schedule_run(account_id: int, run_date: str) -> None:
+def mark_schedule_run(account_id: int, run_at: str) -> None:
     ts = now()
     with conn() as c:
-        c.execute("UPDATE schedules SET last_run_date=?, updated_at=? WHERE account_id=?",
-                  (run_date, ts, account_id))
+        c.execute("UPDATE schedules SET last_run_at=?, updated_at=? WHERE account_id=?",
+                  (run_at, ts, account_id))
+
+
+def account_busy(account_id: int) -> bool:
+    """Saran A: ada job aktif -> jangan menumpuk antrian."""
+    with conn() as c:
+        return c.execute(
+            "SELECT 1 FROM jobs WHERE account_id=? AND status IN ('queued','running','waiting_user') LIMIT 1",
+            (account_id,)).fetchone() is not None
+
+
+def last_job_auth_failed(account_id: int) -> bool:
+    """Saran C: job terbaru gagal auth -> tahan jadwal sampai retry/manual (cegah lockout)."""
+    with conn() as c:
+        j = c.execute("SELECT id, status FROM jobs WHERE account_id=? ORDER BY id DESC LIMIT 1",
+                      (account_id,)).fetchone()
+        if j is None or j["status"] != "failed":
+            return False
+        return c.execute("SELECT 1 FROM job_branches WHERE job_id=? AND error LIKE '[auth]%' LIMIT 1",
+                         (j["id"],)).fetchone() is not None
+
+
+def last_job_range(account_id: int):
+    """Rentang (date_from, date_to) job terbaru akun — scheduler menyambung dari sini.
+    None bila akun belum punya job."""
+    with conn() as c:
+        j = c.execute("SELECT date_from, date_to FROM jobs WHERE account_id=? "
+                      "ORDER BY id DESC LIMIT 1", (account_id,)).fetchone()
+    return (j["date_from"], j["date_to"]) if j else None
+
+
+def last_job_branches(account_id: int) -> list:
+    """Cabang (key, name) dari job terbaru akun — scheduler memakai ulang pilihan cabang
+    job terakhir, bukan auto-fetch semua. [] bila akun belum punya job / job tanpa cabang."""
+    with conn() as c:
+        j = c.execute("SELECT id FROM jobs WHERE account_id=? ORDER BY id DESC LIMIT 1",
+                      (account_id,)).fetchone()
+        if j is None:
+            return []
+        return [(r["branch_key"], r["branch_name"]) for r in c.execute(
+            "SELECT branch_key, branch_name FROM job_branches WHERE job_id=? ORDER BY id",
+            (j["id"],)).fetchall()]

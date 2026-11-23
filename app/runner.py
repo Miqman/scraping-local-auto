@@ -172,7 +172,7 @@ def _run_branch(crawler, ctx, job, br, username, password):
         db.set_branch_status(bid, "running", attempts=attempts, error="", executing=True)
         try:
             for batch in crawler.scrape_branch(ctx, br["branch_key"], job["date_from"], job["date_to"]):
-                db.upsert_transactions(bid, batch)  # commit per batch dalam cabang; dedup UNIQUE
+                db.upsert_transactions(bid, batch)  # commit per batch; dedup per akun lintas job
             count = db.get_branch(bid)["trx_count"]
             db.set_branch_status(bid, "done", trx_count=count, error="", executing=True)
             return

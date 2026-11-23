@@ -24,6 +24,24 @@
     document.getElementById("sidebar-backdrop").classList.toggle("hidden");
   };
 
+  // ---------- Sidebar mini (ikon-saja), persist localStorage ----------
+  window.toggleSidebarMini = function () {
+    var sb = document.getElementById("sidebar");
+    var mini = sb.classList.toggle("sidebar-mini");
+    try { localStorage.setItem("sla-sidebar-mini", mini ? "1" : "0"); } catch (e) {}
+    var btn = document.getElementById("sidebar-mini-toggle");
+    if (btn) btn.title = mini ? "Lebarkan sidebar" : "Ciutkan sidebar";
+  };
+  document.addEventListener("DOMContentLoaded", function () {
+    var mini = false;
+    try { mini = localStorage.getItem("sla-sidebar-mini") === "1"; } catch (e) {}
+    if (mini) {
+      document.getElementById("sidebar").classList.add("sidebar-mini");
+      var btn = document.getElementById("sidebar-mini-toggle");
+      if (btn) btn.title = "Lebarkan sidebar";
+    }
+  });
+
   // ---------- Modal ----------
   // tunda satu tick: event HX-Trigger lain (refreshAccounts) harus bubble dulu sebelum form dilepas
   window.closeModal = function () {
@@ -96,6 +114,7 @@
     setVal("f-page", p.page || "1");
     setVal("f-sort", p.sort || "id");
     setVal("f-dir", p.dir || "desc");
+    if (p.view) setVal("f-view", p.view);
     if (elt && elt.classList && elt.classList.contains("stat-card")) {
       setVal("f-status", p.status || "");
     }
@@ -106,11 +125,11 @@
 
   window.resetJobFilters = function () {
     ["q", "f-status", "f-pos", "f-from", "f-to"].forEach(function (id) { setVal(id, ""); });
-    setVal("f-page", "1"); setVal("f-sort", "id"); setVal("f-dir", "desc");
+    setVal("f-page", "1"); setVal("f-sort", "id"); setVal("f-dir", "desc"); setVal("f-view", "latest");
     if (window.htmx) {
       htmx.ajax("GET", "/partials/jobs", {
         target: "#jobs-table", swap: "outerHTML",
-        values: { page: "1", sort: "id", dir: "desc" }
+        values: { page: "1", sort: "id", dir: "desc", view: "latest" }
       });
     }
   };
@@ -134,5 +153,67 @@
     label.appendChild(cb); label.appendChild(key); label.appendChild(name);
     document.getElementById("manual-branches").appendChild(label);
     kEl.value = ""; nEl.value = ""; kEl.focus();
+  };
+
+  // ---------- Preset tanggal & prefill dari job terakhir ----------
+  function pad(n) { return (n < 10 ? "0" : "") + n; }
+  function iso(d) { return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
+  function shiftDays(n) { var d = new Date(); d.setDate(d.getDate() + n); return iso(d); }
+
+  function applyJobDates(j) {
+    setVal("date-from", j.date_from);
+    setVal("date-to", j.date_to);
+    var info = document.getElementById("last-job-info");
+    var last = document.getElementById("preset-last");
+    var has = !!(j.last_from && j.last_to);
+    if (info) {
+      info.textContent = has ? "Job terakhir: " + j.last_from + " → " + j.last_to : "";
+      info.classList.toggle("hidden", !has);
+    }
+    if (last) last.classList.toggle("hidden", !has);
+  }
+
+  function fetchJobDates(accountId) {
+    if (!accountId) return Promise.resolve();
+    return fetch("/partials/job-dates?account_id=" + encodeURIComponent(accountId), { credentials: "same-origin" })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); });
+  }
+
+  window.setDatePreset = function (kind) {
+    var from, to;
+    if (kind === "yesterday") { from = to = shiftDays(-1); }
+    else if (kind === "7d") { from = shiftDays(-6); to = shiftDays(0); }
+    else if (kind === "30d") { from = shiftDays(-29); to = shiftDays(0); }
+    else if (kind === "month") { var d = new Date(); from = iso(new Date(d.getFullYear(), d.getMonth(), 1)); to = iso(d); }
+    else if (kind === "last") {
+      var sel = document.getElementById("account-select");
+      fetchJobDates(sel && sel.value)
+        .then(function (j) { if (j) applyJobDates(j); })
+        .catch(function () { showToast("Gagal memuat rentang job terakhir", "error"); });
+      return;
+    } else { return; }
+    setVal("date-from", from);
+    setVal("date-to", to);
+  };
+
+  // Saat akun dipilih: isi tanggal sambung job terakhir (htmx swap cabang tetap jalan terpisah)
+  document.addEventListener("change", function (e) {
+    if (!e.target || e.target.id !== "account-select") return;
+    fetchJobDates(e.target.value)
+      .then(function (j) { if (j) applyJobDates(j); })
+      .catch(function () { /* biarkan tanggal saat ini bila fetch gagal */ });
+  });
+  // Muat state job terakhir utk akun terpilih saat halaman pertama dibuka
+  document.addEventListener("DOMContentLoaded", function () {
+    var sel = document.getElementById("account-select");
+    if (sel && sel.value) {
+      fetchJobDates(sel.value).then(function (j) { if (j) applyJobDates(j); }).catch(function () {});
+    }
+  });
+
+  // ---------- Pilih semua / kosongkan cabang ----------
+  window.toggleAllBranches = function (checked) {
+    var boxes = document.querySelectorAll("#branch-candidates input[name=branches], #manual-branches input[name=branches]");
+    for (var i = 0; i < boxes.length; i++) boxes[i].checked = checked;
   };
 })();

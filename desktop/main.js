@@ -1,7 +1,7 @@
 // T24 (Q4 owner 2026-11-19, PRD §12): wrapper Electron Win-first.
 // Membungkus UI localhost yang ada; sidecar Python (PyInstaller) + Camoufox terbundel.
 // Dev (tidak packaged): sidecar = `python -m app` dari repo induk.
-const { app, BrowserWindow, dialog } = require("electron");
+const { app, BrowserWindow, dialog, shell } = require("electron");
 const path = require("path");
 const net = require("net");
 const { spawn } = require("child_process");
@@ -38,6 +38,7 @@ function startSidecar() {
     sidecar = spawn(exe, [], { env, stdio: "ignore", windowsHide: true });
     sidecar.on("error", (e) => console.error("[sla] spawn error:", e.message));
   } else {
+    env.SLA_HEADLESS = "1"; // dev Electron pun headless; headed hanya `python -m app`
     sidecar = spawn(process.env.SLA_PYTHON || "python", ["-m", "app"], {
       cwd: path.join(__dirname, ".."),
       env,
@@ -87,6 +88,14 @@ async function createWindow() {
   });
   win.on("closed", () => { win = null; });
   await win.loadURL(BASE);
+  // Tanpa handler ini, download Excel di app packaged berakhir `cancelled` (save dialog
+  // tak resolve) — terbukti repro. Simpan langsung ke folder Downloads OS + buka lokasinya.
+  win.webContents.session.on("will-download", (event, item) => {
+    item.setSavePath(path.join(app.getPath("downloads"), item.getFilename()));
+    item.once("done", (e, state) => {
+      if (state === "completed") shell.showItemInFolder(item.getSavePath());
+    });
+  });
 }
 
 const gotLock = app.requestSingleInstanceLock();

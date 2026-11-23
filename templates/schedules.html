@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Jadwal Otomatis{% endblock %}
+{% block breadcrumb %}
+<a href="/" class="text-muted hover:text-ink transition-colors">Workspace</a>
+<span class="text-hairline">/</span>
+<span class="font-semibold text-ink">Jadwal Otomatis</span>
+{% endblock %}
+{% block content %}
+<div class="mb-6">
+  <div class="overline mb-1">Konfigurasi · Otomasi</div>
+  <h1 class="text-[28px] font-bold text-ink tracking-[-0.02em] leading-tight">Jadwal Otomatis</h1>
+  <p class="mt-1.5 text-[14px] text-muted max-w-xl leading-relaxed">
+    Tarik transaksi otomatis per akun dengan interval menit. Hanya berjalan saat aplikasi terbuka;
+    rentang menyambung job terakhir akun. Job hasil jadwal muncul di Dashboard seperti job manual.
+  </p>
+</div>
+
+{% include "_schedules.html" %}
+{% endblock %}

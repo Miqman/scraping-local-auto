@@ -1,60 +1,79 @@
-{% set pos_names = {} %}
-{% for p in pos_registry %}{% set _ = pos_names.update({p.code: p.name}) %}{% endfor %}
-<section id="schedules-card" class="card overflow-hidden mt-6"
+<section id="schedules-card" class="card overflow-hidden"
   hx-get="/partials/schedules" hx-trigger="refreshSchedules from:body" hx-target="this" hx-swap="outerHTML">
   <div class="px-5 py-4 border-b border-hairline">
-    <div class="overline mb-1">Otomasi · Story 6</div>
+    <div class="overline mb-1">Otomasi · Per Akun</div>
     <h2 class="text-[16px] font-semibold text-ink">Jadwal otomatis</h2>
     <p class="mt-1 text-[13px] text-muted leading-relaxed max-w-2xl">
-      Harian (semua hari) pukul jam di atas — <span class="font-medium text-ink">waktu lokal mesin</span>,
-      menarik data <span class="font-medium text-ink">kemarin (D-1)</span>. Job muncul di Dashboard seperti job manual
-      (retry/export sama). Aplikasi harus terbuka pada jam jadwal; bila terlewat, dijalankan saat aplikasi
-      dibuka di hari yang sama (catch-up). Tombol <span class="font-medium text-ink">Job Baru</span> tetap untuk override manual.
+      Interval menit per akun (minimal 1) — rentang <span class="font-medium text-ink">menyambung job terakhir akun</span> (sehari setelah tanggal akhir terakhir → hari ini),
+      hanya berjalan saat aplikasi terbuka, tanpa backfill; bila terlewat, dijalankan sekali saat aplikasi dibuka (catch-up).
+      Job muncul di Dashboard seperti job manual (retry/export sama).
     </p>
   </div>
   {% if schedules %}
-  <div class="overflow-x-auto [contain:paint]">
-    <table class="w-full text-left border-collapse">
-      <thead>
-        <tr class="border-b border-hairline bg-canvas/60 text-[11px] font-semibold uppercase tracking-[0.05em] text-muted">
-          <th class="py-3 pl-5 pr-4">Akun</th>
-          <th class="py-3 pl-4 pr-5">Jadwal Harian</th>
-        </tr>
-      </thead>
-      <tbody class="divide-y divide-hairline text-[14px]">
-        {% for s in schedules %}
-        <tr class="hover:bg-surface-hover transition-colors">
-          <td class="py-3.5 pl-5 pr-4 align-middle">
-            <div class="text-[13px] font-semibold text-ink">{{ s.label }}</div>
-            <div class="text-[11px] text-subtle font-mono">{{ s.pos_code }} · {{ pos_names.get(s.pos_code, s.pos_code) }}</div>
-          </td>
-          <td class="py-3.5 pl-4 pr-5 align-middle">
-            <form hx-post="/accounts/{{ s.account_id }}/schedule" hx-target="#schedules-card" hx-swap="outerHTML"
-              class="flex items-center gap-4 flex-wrap">
-              <input type="hidden" name="csrf_token" value="{{ csrf }}">
-              <input type="time" name="run_at" value="{{ s.run_at }}" required
-                class="control w-[120px] px-2 tabular-nums cursor-pointer" aria-label="Jam jadwal {{ s.label }}">
-              <label class="flex items-center gap-2 cursor-pointer text-[13px] text-muted">
-                <input type="checkbox" name="enabled" value="1" {% if s.enabled %}checked{% endif %}
-                  class="w-4 h-4 accent-primary cursor-pointer">
-                Aktif
-              </label>
-              <span class="text-[11px] text-subtle uppercase tracking-[0.05em]">Terakhir</span>
-              <span class="tabular-nums text-[13px] text-muted whitespace-nowrap">{{ s.last_run_date or 'belum' }}</span>
-              <span class="flex-1"></span>
-              <button type="submit" title="Simpan jadwal"
-                class="h-8 w-8 rounded-control border border-hairline text-muted hover:text-primary hover:bg-primary-subtle flex items-center justify-center transition-colors cursor-pointer shrink-0">
-                <i data-lucide="check" class="w-3.5 h-3.5"></i>
-              </button>
-            </form>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <div class="divide-y divide-hairline">
+    {% for p in pos_registry %}
+    {% set rows = schedules | selectattr('pos_code', 'equalto', p.code) | list %}
+    {% if rows %}
+    <details{%- if open_pos == p.code %} open{%- endif %}>
+      <summary class="flex items-center gap-3 px-5 py-3 cursor-pointer appearance-none hover:bg-surface-hover transition-colors">
+        <span class="text-[13px] font-semibold text-ink">{{ p.name }}</span>
+        <span class="badge-neutral tabular-nums">{{ rows | length }} akun · {{ rows | selectattr('enabled') | list | length }} aktif</span>
+        {% if not p.available %}
+        <span class="text-[11px] text-warning">crawler belum tersedia — dilewati scheduler</span>
+        {% endif %}
+        <span class="flex-1"></span>
+        <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-subtle shrink-0"></i>
+      </summary>
+      <div class="overflow-x-auto [contain:paint] border-t border-hairline">
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="border-b border-hairline bg-canvas/60 text-[11px] font-semibold uppercase tracking-[0.05em] text-muted">
+              <th class="py-3 pl-5 pr-4">Akun</th>
+              <th class="py-3 pl-4 pr-4">Jadwal</th>
+              <th class="py-3 pl-4 pr-5">Terakhir</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-hairline text-[14px]">
+            {% for s in rows %}
+            <tr class="hover:bg-surface-hover transition-colors">
+              <td class="py-3.5 pl-5 pr-4 align-middle">
+                <div class="text-[13px] font-semibold text-ink">{{ s.label }}</div>
+                <div class="text-[11px] text-subtle font-mono">{{ s.pos_code }} · {{ s.username }}</div>
+              </td>
+              <td class="py-3.5 pl-4 pr-4 align-middle">
+                <form hx-post="/accounts/{{ s.account_id }}/schedule" hx-target="#schedules-card" hx-swap="outerHTML"
+                  class="flex items-center gap-3 flex-wrap">
+                  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+                  <input type="hidden" name="open_pos" value="{{ p.code }}">
+                  <input type="number" name="interval_minutes" min="1" step="1" value="{{ s.interval_minutes }}" required
+                    class="control w-[120px] px-2 tabular-nums" aria-label="Interval menit {{ s.label }}">
+                  <span class="text-[11px] text-subtle">menit</span>
+                  <label class="flex items-center gap-2 cursor-pointer text-[13px] text-muted">
+                    <input type="checkbox" name="enabled" value="1" {% if s.enabled %}checked{% endif %}
+                      class="w-4 h-4 accent-primary cursor-pointer">
+                    Aktif
+                  </label>
+                  <button type="submit" title="Simpan jadwal"
+                    class="h-8 w-8 rounded-control border border-hairline text-muted hover:text-primary hover:bg-primary-subtle flex items-center justify-center transition-colors cursor-pointer shrink-0">
+                    <i data-lucide="check" class="w-3.5 h-3.5"></i>
+                  </button>
+                </form>
+              </td>
+              <td class="py-3.5 pl-4 pr-5 align-middle tabular-nums text-[13px] text-muted whitespace-nowrap">
+                {{ s.last_run_at.replace('T', ' ') if s.last_run_at else 'belum' }}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+    {% endif %}
+    {% endfor %}
   </div>
   <p class="px-5 py-3 text-[11px] text-subtle border-t border-hairline">
-    POS yang crawler-nya belum tersedia dilewati otomatis oleh scheduler. Maks 2 job paralel &amp; antrian per akun tetap berlaku (E6/E7).
+    Maks 2 job paralel &amp; antrian per akun tetap berlaku (E6/E7). Akun dengan job aktif atau gagal auth dilewati scheduler
+    sampai antrian kosong / job di-retry.
   </p>
   {% else %}
   <div class="py-10 px-6 text-center">
@@ -62,7 +81,7 @@
       <i data-lucide="calendar-clock" class="w-5 h-5"></i>
     </div>
     <h3 class="text-sm font-semibold text-ink">Belum ada akun untuk dijadwalkan</h3>
-    <p class="text-[13px] text-muted mt-1">Tambahkan akun merchant dulu — jadwal harian bisa diaktifkan per akun.</p>
+    <p class="text-[13px] text-muted mt-1">Tambahkan akun merchant dulu — interval menit bisa diaktifkan per akun.</p>
   </div>
   {% endif %}
 </section>

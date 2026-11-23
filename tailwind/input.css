@@ -173,3 +173,29 @@
 @utility input-error {
   @apply border-danger focus:border-danger focus:ring-danger/15;
 }
+
+/* Tailwind v4 juga menerbitkan utilitas bawaan `.overline { text-decoration-line: overline }`
+   (garis di atas teks) SETELAH @utility kustom di layer yang sama, sehingga menang cascade.
+   Override unlayered di bawah mengalahkan semua @layer -> garis hilang, gaya label tetap. */
+.overline {
+  text-decoration-line: none;
+}
+
+/* Sidebar mini (ikon-saja) — toggle kelas .sidebar-mini di <aside>, persist localStorage */
+.sidebar-mini {
+  width: 4.5rem;
+}
+.sidebar-mini .sidebar-label {
+  display: none;
+}
+.sidebar-mini nav a,
+.sidebar-mini #sidebar-mini-toggle {
+  justify-content: center;
+  gap: 0;
+  padding-left: 0;
+  padding-right: 0;
+}
+#sidebar .sidebar-icon-open { display: none; }
+#sidebar .sidebar-icon-close { display: block; }
+.sidebar-mini .sidebar-icon-open { display: block; }
+.sidebar-mini .sidebar-icon-close { display: none; }

@@ -1,5 +1,7 @@
-<div id="stats-row" class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-6"
-  hx-get="/partials/stats" hx-trigger="every 2s" hx-target="this" hx-swap="outerHTML">
+<div id="stats-row" class="mb-6"
+  hx-get="/partials/stats" hx-trigger="every 2s" hx-target="this" hx-swap="outerHTML"
+  hx-vals='js:{view: document.getElementById("f-view") ? document.getElementById("f-view").value : "latest"}'>
+  <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-2">
   {% set cards = [
     ('queued', 'Antri', 'clock', 'text-neutral-badge', 'bg-neutral-badge-bg'),
     ('running', 'Berjalan', 'loader-circle', 'text-primary', 'bg-primary-subtle'),
@@ -22,4 +24,6 @@
     <div class="text-[24px] font-bold tabular-nums leading-none {{ tone if stats[key] > 0 else 'text-ink' }}">{{ stats[key] }}</div>
   </button>
   {% endfor %}
+  </div>
+  <div class="text-[11px] text-subtle">{% if view|default('latest') == 'all' %}semua riwayat{% else %}job terbaru per akun{% endif %}</div>
 </div>

@@ -1,20 +1,17 @@
-"""T08: browser headed + profil per akun, Playwright sync di thread executor.
+"""T08: browser Camoufox per job + profil per akun, Playwright sync di thread executor.
 T09: deteksi gate captcha/OTP + pause/resume (poll 1s -> auto-resume <=5s).
-Camoufox dipakai bila terpasang; fallback Playwright Chromium (graceful degrade).
+Camoufox wajib (anti-detect Cloudflare Turnstile); tanpa fallback — gagal launch = job gagal.
 """
-import logging
 import os
 import time
 
 from playwright.sync_api import Error as PWError
-from playwright.sync_api import sync_playwright
 
 from .errors import CrawlError
 from .paths import profile_dir
 
-log = logging.getLogger("sla.browser")
-
 GATE_TIMEOUT_S = int(os.environ.get("SLA_GATE_TIMEOUT_SECONDS", "600"))  # E1: 10 menit
+HEADLESS = os.environ.get("SLA_HEADLESS", "") == "1"  # produksi (exe) tanpa jendela; dev headed utk captcha
 
 GATE_URL_MARKERS = (
     "challenges.cloudflare.com", "/cdn-cgi/challenge-platform", "turnstile",
@@ -61,15 +58,13 @@ def is_gated(page) -> bool:
 
 
 class Session:
-    """Satu browser headed per job; profil persisten per akun (S6)."""
+    """Satu browser per job; profil persisten per akun (S6); headless bila SLA_HEADLESS=1."""
 
     def __init__(self, account_id: int):
         self.account_id = account_id
-        self._pw = None
         self._ctx = None
         self._camoufox_cm = None
         self.page = None
-        self.engine = "chromium"
 
     def __enter__(self):
         prof = str(profile_dir(self.account_id))
@@ -90,33 +85,21 @@ class Session:
         return self
 
     def _launch(self, prof):
-        try:
-            from camoufox.sync_api import Camoufox  # noqa: delay import
-            kwargs = dict(headless=False, persistent_context=True, user_data_dir=prof,
-                          humanize=False, geoip=False, timeout=25000)
-            bundle = os.environ.get("SLA_CAMOUFOX_DIR")
-            if bundle:
-                # T24: Camoufox terbundel installer — tanpa unduh runtime. UBO di-exclude:
-                # addons default resolve ke cache user (INSTALL_DIR), bukan ke bundle.
-                import json
-                from camoufox.addons import DefaultAddons
-                with open(os.path.join(bundle, "version.json"), encoding="utf-8") as f:
-                    ff_version = json.load(f)["version"].split(".", 1)[0]
-                kwargs.update(executable_path=os.path.join(bundle, "camoufox.exe"),
-                              ff_version=ff_version, exclude_addons=[DefaultAddons.UBO])
-            self._camoufox_cm = Camoufox(**kwargs)
-            self._ctx = self._camoufox_cm.__enter__()
-            self.engine = "camoufox"
-        except Exception as exc:
-            if os.environ.get("SLA_CAMOUFOX_DIR"):
-                raise CrawlError("browser", f"Camoufox bundle gagal dibuka: {exc}") from exc
-            log.warning("Camoufox tidak tersedia (%s); fallback Playwright Chromium", exc)
-            self._camoufox_cm = None
-            self._pw = sync_playwright().start()
-            self._ctx = self._pw.chromium.launch_persistent_context(
-                prof, headless=False, viewport={"width": 1280, "height": 860},
-                args=["--disable-blink-features=AutomationControlled"], timeout=25000,
-            )
+        from camoufox.sync_api import Camoufox  # noqa: delay import
+        kwargs = dict(headless=HEADLESS, persistent_context=True, user_data_dir=prof,
+                      humanize=False, geoip=False, timeout=25000)
+        bundle = os.environ.get("SLA_CAMOUFOX_DIR")
+        if bundle:
+            # T24: Camoufox terbundel installer — tanpa unduh runtime. UBO di-exclude:
+            # addons default resolve ke cache user (INSTALL_DIR), bukan ke bundle.
+            import json
+            from camoufox.addons import DefaultAddons
+            with open(os.path.join(bundle, "version.json"), encoding="utf-8") as f:
+                ff_version = json.load(f)["version"].split(".", 1)[0]
+            kwargs.update(executable_path=os.path.join(bundle, "camoufox.exe"),
+                          ff_version=ff_version, exclude_addons=[DefaultAddons.UBO])
+        self._camoufox_cm = Camoufox(**kwargs)
+        self._ctx = self._camoufox_cm.__enter__()
 
     def _teardown(self):
         try:
@@ -131,12 +114,6 @@ class Session:
         except Exception:
             pass
         self._ctx = None
-        try:
-            if self._pw is not None:
-                self._pw.stop()
-        except Exception:
-            pass
-        self._pw = None
 
     def __exit__(self, *exc):
         self._teardown()
@@ -168,6 +145,8 @@ class Session:
             raise CrawlError("network", f"Gagal memuat {url}: {exc}") from exc
 
     def bring_to_front(self):
+        if HEADLESS:
+            return  # tanpa jendela; pause gate tetap terdeteksi, user retry via UI
         try:
             self.page.bring_to_front()
         except PWError as exc:

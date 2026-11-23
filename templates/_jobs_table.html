@@ -9,6 +9,7 @@
           {{ m.sort_th('Job', 'id', filters) }}
           <th class="py-3 px-4">Rentang Tanggal</th>
           {{ m.sort_th('Cabang', 'branches', filters) }}
+          <th class="py-3 px-4">Trx</th>
           {{ m.sort_th('Status', 'status', filters) }}
           {{ m.sort_th('Dibuat', 'created_at', filters) }}
           <th class="py-3 pl-4 pr-5 text-right"><span class="sr-only">Aksi</span></th>
@@ -21,6 +22,11 @@
             <div class="font-mono text-[12px] font-medium text-primary">#{{ '%04d' % j.id }}</div>
             <div class="text-[13px] font-semibold text-ink leading-snug">{{ j.account_label }}</div>
             <div class="text-[12px] text-muted">{{ j.pos_code }}</div>
+            {% if j.is_scheduled %}
+            <span class="inline-flex items-center gap-1 text-[10px] font-medium text-primary bg-primary-subtle rounded-full px-1.5 py-0.5 mt-1">
+              <i data-lucide="calendar-clock" class="w-2.5 h-2.5"></i>otomatis
+            </span>
+            {% endif %}
           </td>
           <td class="py-3.5 px-4 tabular-nums text-[13px] text-ink whitespace-nowrap">
             {{ j.date_from }} <span class="text-subtle">→</span> {{ j.date_to }}
@@ -32,6 +38,7 @@
                    style="width: {{ (j.done_count / j.branch_total * 100) if j.branch_total else 0 }}%"></div>
             </div>
           </td>
+          <td class="py-3.5 px-4 tabular-nums font-semibold text-ink">{{ j.trx_count }}</td>
           <td class="py-3.5 px-4">{{ m.badge(j.status, job_label[j.status]) }}</td>
           <td class="py-3.5 px-4 tabular-nums text-[13px] text-muted whitespace-nowrap">{{ m.fmt_dt(j.created_at) }}</td>
           <td class="py-3.5 pl-4 pr-5 text-right">
@@ -61,11 +68,19 @@
   {% endif %}
 
   <div class="px-5 py-3.5 border-t border-hairline flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-[13px] text-muted">
-    <div class="tabular-nums">
-      {% if jobs.total %}
-      Menampilkan <span class="font-semibold text-ink">{{ (jobs.page - 1) * jobs.page_size + 1 }}–{{ [jobs.page * jobs.page_size, jobs.total] | min }}</span>
-      dari <span class="font-semibold text-ink">{{ jobs.total }}</span> job
-      {% else %}0 job{% endif %}
+    <div class="flex items-center gap-3 flex-wrap">
+      <span class="tabular-nums">
+        {% if jobs.total %}
+        Menampilkan <span class="font-semibold text-ink">{{ (jobs.page - 1) * jobs.page_size + 1 }}–{{ [jobs.page * jobs.page_size, jobs.total] | min }}</span>
+        dari <span class="font-semibold text-ink">{{ jobs.total }}</span> job{% if jobs.latest %} terbaru per akun{% endif %}
+        {% else %}0 job{% endif %}
+      </span>
+      <button type="button"
+        hx-get="/partials/jobs" hx-vals='{"view": "{{ 'all' if jobs.latest else 'latest' }}", "page": "1"}'
+        hx-include="#job-filters" hx-target="#jobs-table" hx-swap="outerHTML"
+        class="text-[12px] font-medium text-primary hover:underline cursor-pointer">
+        {{ 'Tampilkan semua riwayat' if jobs.latest else 'Hanya job terbaru' }}
+      </button>
     </div>
     <div class="flex items-center gap-1.5">
       <button type="button" {% if jobs.page <= 1 %}disabled{% endif %}

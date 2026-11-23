@@ -160,10 +160,11 @@ Catatan:
 
 | Halaman | Route | Isi |
 |---|---|---|
-| **Dashboard** | `/` | Ringkasan jumlah job per status; daftar job terbaru dengan filter status/POS/tanggal (= riwayat); tombol **Job Baru**; baris job klik → Detail Job; banner peringatan (mis. fallback keyfile Linux) |
-| **Job Baru** | `/jobs/new` | Pilih POS → dropdown akun (terfilter POS itu) → rentang tanggal → daftar cabang (auto-fetch setelah login, atau input manual) → tombol **Jalankan** |
+| **Dashboard** | `/` | Kartu statistik per status **mengikuti mode tabel** (latest/all) + label mode; daftar **job terbaru per akun** (default) dengan filter status/POS/tanggal + toggle "Tampilkan semua riwayat"; kolom **Trx** (jumlah transaksi) + badge **otomatis** (akun berjadwal aktif); tombol **Job Baru**; baris job klik → Detail Job; banner peringatan |
+| **Job Baru** | `/jobs/new` | Pilih POS (default = POS available pertama yang punya akun) → dropdown akun (terfilter POS itu) → rentang tanggal (**prefill sambung job terakhir akun** + preset Kemarin/7 hari/30 hari/Bulan ini/Lanjut job terakhir) → daftar cabang (auto-fetch setelah login, atau input manual; **Pilih semua/Kosongkan**) → tombol **Jalankan** |
 | **Detail Job** | `/jobs/:id` | Status live per cabang (antri/running/menunggu user/done/gagal + kode alasan); banner **MENUNGGU USER** + tombol fallback "Sudah selesai"; tombol **Retry cabang gagal**; preview tabel transaksi; tombol **Export Excel** (aktif jika ≥1 cabang done); tombol **Salin detail error** (redacted, untuk lapor manual ke developer) |
 | **Akun Merchant** | `/accounts` | Daftar akun dikelompokkan per POS; tambah/edit/hapus; password write-only (tidak pernah ditampilkan ulang); label merchant bebas; hapus akun juga menghapus profil browser terkait |
+| **Jadwal Otomatis** | `/schedules` | Halaman sendiri (menu sidebar Konfigurasi): accordion per POS → daftar akun + interval menit (min 1) + toggle Aktif + simpan; rentang menyambung job terakhir akun; hanya saat aplikasi terbuka |
 
 Perilaku live: UI polling status tiap 2 detik (tanpa WebSocket). Sumber kebenaran status = database, bukan memori proses.
 
@@ -188,7 +189,7 @@ Sumber: `gemini-code-1794991265987.md` (spesifikasi + token) dan `gemini-code-17
 | Radius & ukuran | card 12px · control 8px · kontrol atomik tinggi 36px (h-9) · baris tabel padding dinamis (py-3.5) | Formula radius konsentris: anak 8px di dalam induk 12px |
 | Spacing / shadow | 4/8/16/24/32/48px · shadow-sm `0 1px 2px rgba(15,23,42,0.04)` | Kartu data naik via kontras tonal + hairline |
 
-**Shell (dari referensi HTML):** sidebar 240px (brand h-16 + nav ber-grup dengan label overline; mobile off-canvas + backdrop, desktop statis) · header sticky h-16 dengan breadcrumb · main max-w-1440 center (px-8 py-7) · page header = overline + h1 28px + deskripsi + tombol aksi.
+**Shell (dari referensi HTML):** sidebar 240px (brand h-16 + nav ber-grup dengan label overline; mobile off-canvas + backdrop, desktop statis; **mode mini 72px ikon-saja** via toggle "Ciutkan", persist localStorage) · header h-16 dengan breadcrumb · main max-w-1440 center (px-8 py-7) · page header = overline + h1 28px + deskripsi + tombol aksi. **Scroll hanya di main** (body h-screen overflow-hidden; sidebar & header tetap, konten tidak masuk ke area header).
 
 **Komponen yang dipakai:** kartu data table (toolbar: search h-9 w-72 ber-ikon + select filter h-9 + badge count filter; thead 11px uppercase sortable; tbody 14px divide-y hairline; empty state; footer paginasi h-8 tabular-nums) · badge status (mapping token di atas) · modal max-w-md radius-xl backdrop-blur (form akun, konfirmasi hapus) · banner warning + toast (feedback export/salin) · form (label xs semibold, input/select h-9 radius-8, focus border primary + ring).
 
@@ -196,10 +197,11 @@ Sumber: `gemini-code-1794991265987.md` (spesifikasi + token) dan `gemini-code-17
 
 | Halaman | Komponen Adminator |
 |---|---|
-| Dashboard | Page header + CTA "+ Job Baru"; kartu data table job: search merchant/POS, filter status + POS; kolom: Job (ID mono + POS + label merchant 2 baris), Rentang Tanggal (tabular-nums), Cabang (done/total), Status (badge), Dibuat, Aksi → Detail; paginasi server-side; empty state |
-| Job Baru | Kartu form: select POS → select akun (terfilter) → rentang tanggal → daftar cabang dengan checkbox (selected-state `#EFF6FF`); CTA "Jalankan" |
+| Dashboard | Page header + CTA "+ Job Baru"; kartu statistik (ikut mode latest/all) + label mode; kartu data table job: search merchant/POS, filter status + POS; kolom: Job (ID mono + POS + label merchant + badge otomatis), Rentang Tanggal (tabular-nums), Cabang (done/total), **Trx** (tabular-nums), Status (badge), Dibuat, Aksi → Detail; paginasi server-side; empty state |
+| Job Baru | Kartu form: select POS → select akun (terfilter) → rentang tanggal + baris preset (Kemarin/7 hari/30 hari/Bulan ini/Lanjut job terakhir) + info job terakhir → daftar cabang checkbox (selected-state `#EFF6FF`) + Pilih semua/Kosongkan; CTA "Jalankan" |
 | Detail Job | Header + badge status job + aksi (Export Excel = tombol sekunder ikon download; Retry gagal = primary); banner warning MENUNGGU USER + tombol "Sudah selesai"; kartu tabel cabang (badge status, trx_count tabular-nums, kode error mono, attempts, aksi retry); kartu preview transaksi + paginasi |
 | Akun Merchant | Kartu data table (POS, Label, Username, Dibuat, Aksi edit/hapus) + CTA "+ Tambah Akun" → modal form (POS, label, username, password write-only); konfirmasi hapus = modal |
+| Jadwal Otomatis | Page header + kartu accordion per POS (`<details>`): summary nama POS + badge "N akun · M aktif"; isi tabel akun (label + username mono, input interval menit, checkbox Aktif, Terakhir, tombol simpan ikon check); empty state bila belum ada akun |
 
 **Adaptasi wajib dari referensi (bukan salin mentah):**
 
@@ -229,7 +231,9 @@ Aturan keras arsitektur:
 
 - Server web **bind hanya `127.0.0.1`** — tidak pernah `0.0.0.0`.
 - Semua request pengubah state (POST/PUT/DELETE) wajib **CSRF token**; validasi header `Host`/`Origin` = loopback (anti DNS-rebinding).
-- Browser **selalu headed** di MVP (user bisa menonton dan menyelesaikan captcha). Opsi headless = nanti.
+- Browser **headed di dev** (`python -m app`, operator menyelesaikan captcha); **headless di build
+  produksi/exe** (`SLA_HEADLESS=1` di sidecar + Electron) — tanpa jendela browser. Gate interaktif yang
+  tak lolos sendiri di headless → `waiting_user` lalu `[user_timeout]`; retry via UI.
 - Maks **2 job berjalan bersamaan** (RAM 16 GB, ~1–2 GB per Camoufox); job dengan **akun sama diserialkan** (status antri).
 - Maks **2 auto re-login per cabang** dan **3 attempt total per cabang** — mencegah loop tak berujung dan lockout akun merchant.
 - Logika crawler **ditulis ulang mencontoh referensi** (`siberpos_crawler.py`, `esb_posv2.py`, `turnstile_login.py` di `scraping-efd-python`) — bukan mem-port infrastruktur server (Redis, SSH tunnel, pool).
@@ -289,7 +293,7 @@ erDiagram
 
 Aturan data:
 
-- **UNIQUE(`job_branch_id`, `trx_id`)** + upsert → retry tidak mendobel transaksi. Jika POS tidak punya id stabil, `trx_id` = sha256 dari baris ternormalisasi.
+- **UNIQUE(`account_id`, `trx_id`)** + upsert → dedup **per akun lintas job**: transaksi sudah ada & identik di-skip; isi berubah di-update di tempat dan pindah ke cabang run terbaru (versi terbaru menang). Retry dalam cabang tetap tidak mendobel. Run berulang (scheduler interval) tidak menumpuk salinan; export per job jadi inkremental. Jika POS tidak punya id stabil, `trx_id` = sha256 dari baris ternormalisasi. Migrasi DB lama otomatis (backfill `account_id`, buang duplikat pertahankan versi terbaru).
 - **`raw_json` = sumber kebenaran** (format Excel fleksibel, presisi uang exact). Kolom `real` hanya untuk preview/sorting; Excel dirender dari `raw_json`.
 - Commit **per cabang** (bukan per job) → crash tidak menghilangkan cabang yang sudah selesai.
 - Hapus akun: **RESTRICT** jika masih punya job; hapus job: **CASCADE** ke branches + transactions; hapus akun juga menghapus direktori profil browsernya.
@@ -399,6 +403,55 @@ Aturan data:
   rollout M2 karena DB operator sudah berisi data; wheel Mac/Linux diverifikasi saat build M2.
   Sampai adopsi M2, residual S4 tetap: rekomendasi disk encryption OS (BitLocker/FileVault/LUKS).
   `pysqlcipher3` = sdist saja (beban kompilasi) → tidak dipilih.
+- **2026-11-23 — Q5 direvisi owner: jadwal v2 interval menit + grup POS.** Menggantikan default
+  harian 06:00/D-1: jadwal kini **interval menit per akun (min 1, default 60)**, UI accordion
+  per POS (klik POS → daftar akun), rentang **kemarin–hari ini (D-1..D0)**, **hanya saat aplikasi
+  terbuka** (tanpa backfill; catch-up sekali saat dibuka). Pengaman: skip akun busy (antrian tidak
+  menumpuk), tahan bila job terakhir gagal `[auth]` sampai retry/manual (cegah lockout), purge
+  retensi 90 hari harian oleh scheduler. Migrasi DB lama otomatis (jadwal harian aktif → interval
+  1440). Bukti: self-check `python -m app.scheduler`, migrasi DB lama, HTTP save (422/200 + open_pos),
+  tick live membuat job demo & siberpos pada kadensi 1 menit, verifikasi visual accordion browser.
+- **2026-11-23 — dedup transaksi per akun + dashboard job terbaru.** Owner: run berulang (tanggal
+  sama/beda) menumpuk data duplikat (terukur 40% baris duplikat di DB). Keputusan: kunci dedup
+  dinaikkan `UNIQUE(job_branch_id,trx_id)` → `UNIQUE(account_id,trx_id)`; trx identik di-skip, isi
+  berubah update di tempat + pindah ke run terbaru (bukan hapus-lalu-ganti — hindari data loss saat
+  scrape parsial). Dashboard default menampilkan **job terbaru per akun** + toggle semua riwayat.
+  Migrasi DB lama otomatis (backfill account_id, buang duplikat versi terbaru menang). Bukti:
+  acceptance 37/37 PASS, proof migrasi/dedup/update/retry/export inkremental, visual toggle browser.
+- **2026-11-23 — rentang jadwal menyambung job terakhir.** Owner: jadwal otomatis selalu menarik
+  tanggal yang sama (22..23); seharusnya maju mengikuti job terakhir. Keputusan: scheduler memakai
+  `db.last_job_range(account_id)` — job baru mulai H+1 setelah `date_to` job terakhir sampai hari ini
+  (job pertama akun = kemarin..hari ini; bila sudah mencakup hari ini, rentang diulang/refresh).
+  Bukti: self-check 4 kasus rentang + live tick (job terakhir 10..15 → job baru 16..hari ini).
+- **2026-11-23 — UX dashboard + Job Baru (6 perbaikan).** Owner: UI membingungkan. Keputusan:
+  (1) kartu statistik ikut mode tabel latest/all + label mode (konsisten, tak lagi hitung semua job
+  saat tabel latest); (2) kolom Trx di tabel job; (3) badge "otomatis" utk akun berjadwal aktif;
+  (4) preset tanggal (Kemarin/7 hari/30 hari/Bulan ini/Lanjut job terakhir) + prefill sambung job
+  terakhir saat akun dipilih (endpoint `/partials/job-dates`); (5) Pilih semua/Kosongkan cabang;
+  (6) POS default = available pertama yang punya akun (bukan selalu demo). Bukti: visual browser
+  (stats 4↔17 ikut toggle, kolom Trx 960, badge otomatis, prefill akun 3 → 23..23 + info job terakhir,
+  preset 7d 17..23, select-all 3 cabang bertahan setelah htmx swap) + acceptance suite.
+- **2026-11-23 — Jadwal Otomatis jadi halaman sendiri.** Owner: lebih baik terpisah dari Akun
+  Merchant. Keputusan: route `/schedules` + `templates/schedules.html` (page header + include
+  `_schedules.html`); kartu jadwal dihapus dari `accounts.html`; item nav sidebar "Jadwal Otomatis"
+  (grup Konfigurasi, ikon calendar-clock, active_page=schedules). POST schedule tetap di
+  `/accounts/{id}/schedule` (hx-target #schedules-card, tetap di halaman /schedules). Bukti visual:
+  nav aktif, 4 grup POS, simpan jadwal persists (DB enabled=1 interval=5), badge "1 aktif",
+  accounts bersih dari kartu jadwal.
+- **2026-11-23 — shell layout: sidebar mini + scroll hanya main.** Owner: sidebar bisa diciutkan
+  (mode mini), sidebar & header tidak ikut scroll, konten tidak masuk area navbar. Keputusan:
+  body `h-screen overflow-hidden`; sidebar & header statis di flex row; hanya `<main>` yang
+  `overflow-y-auto` (header bukan sticky lagi — tetap karena main yang scroll). Mode mini 72px
+  ikon-saja: kelas `.sidebar-mini` (label disembunyikan, ikon center, tooltip title), toggle
+  "Ciutkan" di footer sidebar, persist `localStorage sla-sidebar-mini`. Mobile off-canvas tetap.
+  Bukti visual: main scroll 500px → header/sidebar top=0, window.scrollY=0; mini 240→72px label
+  hidden ikon 16px, reload persist, expand kembali; mobile drawer buka/tutup normal.
+- **2026-11-23 — jadwal memakai cabang job terakhir.** Owner: jadwal otomatis mengambil semua
+  cabang padahal Job Baru hanya single branch. Penyebab: scheduler `create_job(..., [])` → runner
+  auto-fetch semua cabang. Keputusan: `db.last_job_branches(account_id)` (cabang job terbaru) →
+  scheduler memakai ulang pilihan cabang job terakhir; akun belum punya job → `[]` (auto-fetch).
+  Bukti: self-check kasus cabang tunggal + live tick (job terakhir demo-pusat → job scheduler
+  hanya ['demo-pusat'], bukan semua).
 
 ## 13. Acceptance Criteria (observable, per fitur wajib)
 

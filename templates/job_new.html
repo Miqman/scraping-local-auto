@@ -10,8 +10,8 @@
   <div class="overline mb-1">Workspace · Jalankan Scraping</div>
   <h1 class="text-[28px] font-bold text-ink tracking-[-0.02em] leading-tight">Job Baru</h1>
   <p class="mt-1.5 text-[14px] text-muted max-w-xl leading-relaxed">
-    Pilih POS, akun, rentang tanggal, dan cabang. Browser terbuka headed — bila muncul captcha/OTP,
-    selesaikan sekali dan aplikasi lanjut sendiri.
+    Pilih POS, akun, rentang tanggal, dan cabang. Scraping berjalan di latar belakang — captcha/OTP
+    umumnya lolos otomatis; bila tertahan, retry cabang dan aplikasi lanjut sendiri.
   </p>
 </div>
 
@@ -23,8 +23,8 @@
     <div class="overline">Cara kerja</div>
     {% set steps = [
       ('mouse-pointer-click', 'Pilih & jalankan', 'Job masuk antrian. Maks 2 job paralel; akun yang sama diserialkan (antri).'),
-      ('app-window', 'Browser headed terbuka', 'Camoufox tampil di layar dengan profil khusus akun ini — bisa ditonton.'),
-      ('hand', 'Captcha? Selesaikan sekali', 'Status MENUNGGU USER muncul. Selesaikan di browser; aplikasi lanjut otomatis ≤5 detik. Timeout 10 menit.'),
+      ('app-window', 'Browser di latar belakang', 'Camoufox berjalan dengan profil khusus akun ini. Versi developer menampilkannya di layar; versi exe tanpa jendela.'),
+      ('hand', 'Captcha? Umumnya otomatis', 'Bila tertahan, status MENUNGGU USER muncul. Retry cabang; aplikasi lanjut otomatis ≤5 detik. Timeout 10 menit.'),
       ('file-spreadsheet', 'Export Excel', 'Hasil per cabang tersimpan walau ada yang gagal. Retry hanya cabang gagal, lalu export.')
     ] %}
     <ol class="space-y-3.5">

@@ -3,6 +3,8 @@ Tanpa membuka browser OS (SLA_NO_BROWSER / Electron yang menampilkan UI).
 Dibundle PyInstaller onedir oleh scripts/build_sidecar.py."""
 import os
 
+os.environ["SLA_HEADLESS"] = "1"  # build produksi: scraper tanpa jendela browser
+
 import uvicorn
 
 from app.main import app

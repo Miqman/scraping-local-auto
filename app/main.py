@@ -15,7 +15,7 @@ import crawlers
 from . import crypto, db, demo_pos, export, security
 from .paths import STATIC_DIR, TEMPLATES_DIR, profile_dir
 from .runner import MAX_ATTEMPTS, Runner
-from .scheduler import RUN_AT_RE, Scheduler
+from .scheduler import MIN_INTERVAL, Scheduler
 
 log = logging.getLogger("sla")
 runner = Runner()
@@ -113,12 +113,13 @@ def dashboard(request: Request):
     return render(request, "dashboard.html", stats=db.job_stats(),
                   jobs=db.list_jobs(), active_page="dashboard",
                   filters={"q": "", "status": "", "pos": "", "date_from": "",
-                           "date_to": "", "sort": "id", "dir": "desc"})
+                           "date_to": "", "sort": "id", "dir": "desc", "view": "latest"})
 
 
 @app.get("/partials/stats", response_class=HTMLResponse)
 def stats_partial(request: Request):
-    return render(request, "_stats.html", stats=db.job_stats())
+    view = request.query_params.get("view", "latest")
+    return render(request, "_stats.html", stats=db.job_stats(latest=view != "all"), view=view)
 
 
 @app.get("/partials/jobs", response_class=HTMLResponse)
@@ -127,12 +128,13 @@ def jobs_partial(request: Request):
     jobs = db.list_jobs(q=p.get("q", ""), status=p.get("status", ""), pos=p.get("pos", ""),
                         date_from=p.get("date_from", ""), date_to=p.get("date_to", ""),
                         sort=p.get("sort", "id"), direction=p.get("dir", "desc"),
-                        page=int(p.get("page", "1") or 1))
+                        page=int(p.get("page", "1") or 1),
+                        latest=p.get("view", "latest") != "all")
     return render(request, "_jobs_table.html", jobs=jobs,
                   filters={"q": p.get("q", ""), "status": p.get("status", ""),
                            "pos": p.get("pos", ""), "date_from": p.get("date_from", ""),
                            "date_to": p.get("date_to", ""), "sort": p.get("sort", "id"),
-                           "dir": p.get("dir", "desc")})
+                           "dir": p.get("dir", "desc"), "view": p.get("view", "latest")})
 
 
 # ================= Job Baru =================
@@ -144,16 +146,22 @@ def _job_form_ctx(request: Request, **kw):
     account = db.get_account(sel_acc) if sel_acc else None
     if account is not None:
         selected_pos = account["pos_code"]
-    elif any(a["pos_code"] == "demo" for a in all_accounts):
-        selected_pos = "demo"
     else:
-        selected_pos = next((p.code for p in crawlers.REGISTRY if p.available), "")
+        # default: POS available pertama yang punya akun (bukan selalu demo)
+        owned = {a["pos_code"] for a in all_accounts}
+        selected_pos = next((p.code for p in crawlers.REGISTRY if p.available and p.code in owned), "")
+        if not selected_pos:
+            selected_pos = next((p.code for p in crawlers.REGISTRY if p.available), "")
+    if sel_acc:
+        rng = db.last_job_range(sel_acc)
+        default_from, default_to = rng if rng else (date.today().isoformat(), date.today().isoformat())
+    else:
+        default_from = default_to = (date.today() - timedelta(days=1)).isoformat()
     base = {"pos_list": crawlers.REGISTRY,
             "accounts": [a for a in all_accounts if a["pos_code"] == selected_pos],
             "selected_pos": selected_pos, "selected_account_id": sel_acc,
             "known": db.known_branches(sel_acc) if sel_acc else [],
-            "default_from": (date.today() - timedelta(days=1)).isoformat(),
-            "default_to": (date.today() - timedelta(days=1)).isoformat(),
+            "default_from": default_from, "default_to": default_to,
             "active_page": "new-job"}
     base.update(kw)
     return base
@@ -174,6 +182,19 @@ def account_options(request: Request, pos: str = ""):
 def branch_candidates(request: Request, account_id: int = 0):
     known = db.known_branches(account_id) if account_id else []
     return render(request, "_branch_candidates.html", known=known, account_id=account_id)
+
+
+@app.get("/partials/job-dates")
+def job_dates(request: Request, account_id: int = 0):
+    """Rentang default utk akun: sambung job terakhir (date_to+1 .. hari ini); belum ada job = kemarin."""
+    today = date.today()
+    rng = db.last_job_range(account_id) if account_id else None
+    if rng:
+        d_from = min((date.fromisoformat(rng[1]) + timedelta(days=1)).isoformat(), today.isoformat())
+    else:
+        d_from = (today - timedelta(days=1)).isoformat()
+    return JSONResponse({"date_from": d_from, "date_to": today.isoformat(),
+                         "last_from": rng[0] if rng else None, "last_to": rng[1] if rng else None})
 
 
 @app.post("/jobs", response_class=HTMLResponse)
@@ -357,7 +378,13 @@ def delete_job(request: Request, job_id: int):
 @app.get("/accounts", response_class=HTMLResponse)
 def accounts_page(request: Request):
     return render(request, "accounts.html", accounts=db.list_accounts(),
-                  schedules=db.list_schedules(), active_page="accounts")
+                  active_page="accounts")
+
+
+@app.get("/schedules", response_class=HTMLResponse)
+def schedules_page(request: Request):
+    return render(request, "schedules.html", schedules=db.list_schedules(),
+                  open_pos="", active_page="schedules")
 
 
 @app.get("/partials/accounts", response_class=HTMLResponse)
@@ -367,24 +394,30 @@ def accounts_partial(request: Request):
 
 @app.get("/partials/schedules", response_class=HTMLResponse)
 def schedules_partial(request: Request):
-    return render(request, "_schedules.html", schedules=db.list_schedules())
+    return render(request, "_schedules.html", schedules=db.list_schedules(), open_pos="")
 
 
 @app.post("/accounts/{account_id}/schedule", response_class=HTMLResponse)
 async def save_schedule(request: Request, account_id: int):
-    if db.get_account(account_id) is None:
+    account = db.get_account(account_id)
+    if account is None:
         raise HTTPException(404)
     form = await request.form()
-    run_at = str(form.get("run_at", "")).strip()
+    try:
+        interval = int(str(form.get("interval_minutes", "")).strip())
+    except ValueError:
+        interval = 0
     enabled = form.get("enabled") == "1"
+    open_pos = str(form.get("open_pos", "")).strip()
     headers = {}
-    if not RUN_AT_RE.match(run_at):
-        hx_trigger(headers, {"toast": {"msg": "Jam jadwal tidak valid (HH:MM, 00:00–23:59)", "kind": "error"}})
+    if interval < MIN_INTERVAL:
+        hx_trigger(headers, {"toast": {"msg": "Interval minimal 1 menit", "kind": "error"}})
         return PlainTextResponse("", status_code=422, headers=headers)
-    db.upsert_schedule(account_id, enabled, run_at)
-    hx_trigger(headers, {"toast": {"msg": f"Jadwal {'diaktifkan' if enabled else 'dinonaktifkan'} — harian {run_at}, rentang kemarin (D-1)",
+    db.upsert_schedule(account_id, enabled, interval)
+    hx_trigger(headers, {"toast": {"msg": f"Jadwal {'diaktifkan' if enabled else 'dinonaktifkan'} — tiap {interval} menit, rentang kemarin–hari ini",
                                    "kind": "success"}, "refreshSchedules": True})
-    return render(request, "_schedules.html", schedules=db.list_schedules())
+    return render(request, "_schedules.html", schedules=db.list_schedules(),
+                  open_pos=open_pos or account["pos_code"])
 
 
 @app.get("/accounts/modal", response_class=HTMLResponse)
@@ -412,6 +445,13 @@ async def save_account(request: Request):
         acc = db.get_account(aid)
         if acc is None:
             raise HTTPException(404)
+        if username != acc["username"]:
+            if db.account_has_jobs(aid):
+                hx_trigger(headers, {"toast": {"msg": "Username tidak bisa diubah selama akun punya job: "
+                                               "sesi lama akan terpakai. Hapus job-nya dulu, atau buat akun baru.",
+                                               "kind": "error"}, "closeModal": True})
+                return PlainTextResponse("", status_code=409, headers=headers)
+            shutil.rmtree(profile_dir(aid), ignore_errors=True)  # sesi profil milik username lama
         enc = crypto.encrypt(password) if password else None
         db.update_account(aid, label, username, enc)
         msg = "Akun diperbarui" + (" (password baru tersimpan terenkripsi)" if password else "")

@@ -1,4 +1,8 @@
 {% if known %}
+  <div class="flex items-center gap-2 mb-1.5">
+    <button type="button" onclick="toggleAllBranches(true)" class="text-[12px] text-primary hover:underline cursor-pointer">Pilih semua</button>
+    <button type="button" onclick="toggleAllBranches(false)" class="text-[12px] text-primary hover:underline cursor-pointer">Kosongkan</button>
+  </div>
 <div class="space-y-1.5">
   {% for b in known %}
   <label class="flex items-center gap-3 px-3 py-2.5 rounded-control border border-hairline cursor-pointer transition-colors has-[:checked]:bg-primary-subtle has-[:checked]:border-primary/30 hover:bg-surface-hover">
