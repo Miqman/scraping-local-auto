@@ -463,6 +463,12 @@ Aturan data:
   (Python 3.12, Node 22), trigger workflow_dispatch / tag v*; langkah fetch Camoufox → vendor →
   build sidecar → smoke healthz → dist:mac → artifact dmg+zip. Memungkinkan build Mac tanpa mesin
   fisik. YAML tervalidasi; eksekusi CI nyata belum dijalankan (perlu push ke GitHub).
+- **2026-11-25 — pin camoufox 0.4.11 + panduan build Mac manual.** CI gagal berulang: pip menarik
+  camoufox 0.5.x yang mengunduh model fpgen tambahan (gagal jaringan/rate limit di runner).
+  Keputusan: pin `camoufox==0.4.11` (versi teruji projek, tanpa fpgen) di requirements.txt;
+  tulis `BUILD-MAC.md` — panduan langkah demi langkah build di mesin Mac (Homebrew, Python 3.12,
+  Node 22, venv, fetch Camoufox, sidecar, dist:mac, buka Gatekeeper, checklist verifikasi) agar
+  owner bisa minta tolong rekan yang punya Mac. CI tetap ada sebagai alternatif.
 
 ## 13. Acceptance Criteria (observable, per fitur wajib)
 

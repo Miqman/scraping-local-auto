@@ -134,17 +134,15 @@ npm run dist:win                         # -> dist/Scraping Lokal Otomatis Setup
   winCodeSign electron-builder gagal extract symlink tanpa privilege Windows → pre-extract
   manual `7za x -y` (tanpa `-snld`) ke `%LOCALAPPDATA%/electron-builder/Cache/winCodeSign/<hash>/`;
   NSIS `runAfterFinish:false` agar install silent tidak menjalankan app di port default.
-- **Mac**: kode sudah portabel (resolusi Camoufox/sidecar per OS, `build_sidecar.py` separator
-  `--add-data` + keyring backend per OS, `package.json` target `mac` dmg/zip + `npm run dist:mac`).
-  **Build wajib di mesin Mac / CI macOS** — PyInstaller tidak bisa cross-compile dari Windows.
-  Langkah di Mac: `pip install -r requirements.txt pyinstaller` → `python -m camoufox fetch` →
-  salin cache ke `vendor/camoufox` (bundle `Camoufox.app`; fonts opsional) → `python scripts/build_sidecar.py`
-  → `cd desktop && npm install && npm run dist:mac` → `dist/*.dmg`. Unsigned (`identity:null`):
-  Gatekeeper memperingatkan — klik-kanan→Open atau `xattr -d com.apple.quarantine <app>`;
-  signing/notarisasi Apple Developer ID menyusul (M2). Belum diuji di Mac nyata.
-  **CI otomatis**: `.github/workflows/build-mac.yml` (runner `macos-latest`, Python 3.12 + Node 22) —
-  trigger manual (Actions → Run workflow) atau tag `v*`; fetch Camoufox → build sidecar → smoke
-  healthz → `dist:mac` → upload artifact `scraping-local-auto-mac` (dmg+zip). Tanpa Mac fisik.
+- **Mac**: panduan build lengkap di [`BUILD-MAC.md`](BUILD-MAC.md) (untuk dijalankan di mesin
+  Mac — bisa minta tolong rekan yang punya Mac). Kode sudah portabel (resolusi Camoufox/sidecar
+  per OS, `build_sidecar.py` separator `--add-data` + keyring backend per OS, `package.json`
+  target mac dmg/zip + `npm run dist:mac`). **Build wajib di macOS** — PyInstaller tidak bisa
+  cross-compile dari Windows. `camoufox` di-pin `==0.4.11` (versi teruji; 0.5.x menarik model
+  fpgen tambahan yang gagal di CI). Unsigned (`identity:null`): Gatekeeper memperingatkan —
+  klik-kanan→Open atau `xattr -d com.apple.quarantine <app>`; signing Apple Developer ID menyusul (M2).
+  **CI alternatif**: `.github/workflows/build-mac.yml` (runner `macos-latest`) — trigger manual
+  atau tag `v*`; upload artifact dmg+zip. Bila CI rewel (rate limit/jaringan), pakai build manual di Mac.
 - Linux: menyusul (owner Win-first, PRD §12); jalur resolusi `camoufox-bin` sudah disiapkan.
 - Panduan operator: [`PANDUAN-OPERATOR.md`](PANDUAN-OPERATOR.md).
 
