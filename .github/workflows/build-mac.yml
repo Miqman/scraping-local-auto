@@ -27,8 +27,24 @@ jobs:
           python -m pip install -r requirements.txt pyinstaller
 
       - name: Fetch Camoufox (macOS bundle)
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          python -m camoufox fetch
+          # camoufox fetch memanggil api.github.com tanpa auth -> kena rate limit 403 di runner CI.
+          # Inject header Authorization dari GITHUB_TOKEN (limit 5000/jam vs 60 anonim).
+          python - <<'PY'
+          import os, requests
+          _orig = requests.get
+          def _auth_get(url, *a, **kw):
+              if "api.github.com" in str(url):
+                  h = dict(kw.get("headers") or {})
+                  h.setdefault("Authorization", "Bearer " + os.environ["GH_TOKEN"])
+                  kw["headers"] = h
+              return _orig(url, *a, **kw)
+          requests.get = _auth_get
+          from camoufox.__main__ import cli
+          cli(["fetch"], standalone_mode=False)
+          PY
           CACHE="$(python -m camoufox path)"
           mkdir -p vendor
           cp -R "$CACHE" vendor/camoufox
