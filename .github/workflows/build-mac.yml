@@ -32,18 +32,35 @@ jobs:
         run: |
           # camoufox fetch memanggil api.github.com tanpa auth -> kena rate limit 403 di runner CI.
           # Inject header Authorization dari GITHUB_TOKEN (limit 5000/jam vs 60 anonim).
+          # Retry untuk kegagalan jaringan transien (mis. unduh model fpgen dari release-assets).
           python - <<'PY'
-          import os, requests
+          import os, time, requests
           _orig = requests.get
           def _auth_get(url, *a, **kw):
               if "api.github.com" in str(url):
                   h = dict(kw.get("headers") or {})
                   h.setdefault("Authorization", "Bearer " + os.environ["GH_TOKEN"])
                   kw["headers"] = h
-              return _orig(url, *a, **kw)
+              last = None
+              for attempt in range(4):
+                  try:
+                      return _orig(url, *a, **kw)
+                  except requests.exceptions.RequestException as e:
+                      last = e
+                      time.sleep(3 * (attempt + 1))
+              raise last
           requests.get = _auth_get
           from camoufox.__main__ import cli
-          cli(["fetch"], standalone_mode=False)
+          for attempt in range(3):
+              try:
+                  cli(["fetch"], standalone_mode=False)
+                  break
+              except SystemExit as e:
+                  if not e.code:
+                      break
+                  if attempt == 2:
+                      raise
+                  time.sleep(5)
           PY
           CACHE="$(python -m camoufox path)"
           mkdir -p vendor
