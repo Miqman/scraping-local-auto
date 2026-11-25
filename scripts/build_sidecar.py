@@ -3,11 +3,15 @@ Jalankan dari root repo: python scripts/build_sidecar.py
 Hasil: sidecar/dist/sla-sidecar/ (dipakai desktop/package.json extraResources).
 Browser Camoufox terpisah: vendor/camoufox (salin dari cache `python -m camoufox path`;
 folder fonts/ opsional runtime — diuji launch tanpa fonts, lihat bukti T24)."""
+import sys
 from pathlib import Path
 
 import PyInstaller.__main__
 
 ROOT = Path(__file__).resolve().parent.parent
+SEP = ";" if sys.platform == "win32" else ":"  # pemisah --add-data per OS
+KEYRING_BACKEND = {"win32": "keyring.backends.Windows",
+                   "darwin": "keyring.backends.macOS"}.get(sys.platform, "keyring.backends.SecretService")
 
 PyInstaller.__main__.run([
     str(ROOT / "sidecar" / "entry.py"),
@@ -17,8 +21,8 @@ PyInstaller.__main__.run([
     "--workpath", str(ROOT / "sidecar" / "build"),
     "--specpath", str(ROOT / "sidecar"),
     "--paths", str(ROOT),
-    "--add-data", f"{ROOT / 'templates'};templates",
-    "--add-data", f"{ROOT / 'static'};static",
+    "--add-data", f"{ROOT / 'templates'}{SEP}templates",
+    "--add-data", f"{ROOT / 'static'}{SEP}static",
     "--collect-submodules", "uvicorn",
     "--collect-submodules", "camoufox",
     "--collect-data", "camoufox",
@@ -29,7 +33,7 @@ PyInstaller.__main__.run([
     "--hidden-import", "camoufox.sync_api",
     "--hidden-import", "greenlet",
     "--hidden-import", "pyee.asyncio",
-    "--hidden-import", "keyring.backends.Windows",
+    "--hidden-import", KEYRING_BACKEND,
     "--hidden-import", "uvicorn.loops.asyncio",
     "--hidden-import", "uvicorn.protocols.http.h11_impl",
     "--hidden-import", "uvicorn.protocols.websockets.wsproto_impl",

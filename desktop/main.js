@@ -33,7 +33,8 @@ function startSidecar() {
   if (app.isPackaged) {
     // Camoufox terbundel di resources/camoufox (override resolusi path; lihat app/browser.py)
     env.SLA_CAMOUFOX_DIR = path.join(process.resourcesPath, "camoufox");
-    const exe = path.join(process.resourcesPath, "sidecar", "sla-sidecar.exe");
+    const exe = path.join(process.resourcesPath, "sidecar",
+      process.platform === "win32" ? "sla-sidecar.exe" : "sla-sidecar");
     console.log("[sla] spawn sidecar:", exe);
     sidecar = spawn(exe, [], { env, stdio: "ignore", windowsHide: true });
     sidecar.on("error", (e) => console.error("[sla] spawn error:", e.message));

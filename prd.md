@@ -452,6 +452,17 @@ Aturan data:
   scheduler memakai ulang pilihan cabang job terakhir; akun belum punya job → `[]` (auto-fetch).
   Bukti: self-check kasus cabang tunggal + live tick (job terakhir demo-pusat → job scheduler
   hanya ['demo-pusat'], bukan semua).
+- **2026-11-25 — portabilitas Mac disiapkan (build tetap Win-first).** Owner tanya cara install
+  Mac. Keputusan: kode dibuat portabel — `browser.py` resolusi executable Camoufox per OS
+  (win `camoufox.exe`, mac `Camoufox.app/Contents/MacOS/camoufox` + version.json di Resources,
+  lin `camoufox-bin`); `main.js` nama sidecar per `process.platform`; `build_sidecar.py` separator
+  `--add-data` (`;` win / `:` unix) + keyring backend per OS; `package.json` target mac dmg/zip +
+  `npm run dist:mac`. **Binary Mac wajib dibangun di Mac/CI macOS** (PyInstaller tak cross-compile);
+  belum diuji di Mac nyata. Bukti Windows tak regresi: rebuild sidecar + launch Camoufox bundle OK.
+- **2026-11-25 — CI build Mac ditambahkan.** `.github/workflows/build-mac.yml`: runner macos-latest
+  (Python 3.12, Node 22), trigger workflow_dispatch / tag v*; langkah fetch Camoufox → vendor →
+  build sidecar → smoke healthz → dist:mac → artifact dmg+zip. Memungkinkan build Mac tanpa mesin
+  fisik. YAML tervalidasi; eksekusi CI nyata belum dijalankan (perlu push ke GitHub).
 
 ## 13. Acceptance Criteria (observable, per fitur wajib)
 

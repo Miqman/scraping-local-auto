@@ -1,0 +1,70 @@
+# Build installer macOS (.dmg) — PyInstaller tidak bisa cross-compile, jadi wajib runner macOS.
+# Trigger: manual (workflow_dispatch) atau tag v*. Artifact: dmg + zip, tanpa signing (M2).
+name: build-mac
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Python deps + PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller
+
+      - name: Fetch Camoufox (macOS bundle)
+        run: |
+          python -m camoufox fetch
+          CACHE="$(python -m camoufox path)"
+          mkdir -p vendor
+          cp -R "$CACHE" vendor/camoufox
+          rm -rf vendor/camoufox/fonts
+          test -f vendor/camoufox/Camoufox.app/Contents/MacOS/camoufox
+
+      - name: Build sidecar (PyInstaller onedir)
+        run: python scripts/build_sidecar.py
+
+      - name: Smoke sidecar (healthz)
+        run: |
+          SLA_PORT=8765 SLA_NO_BROWSER=1 SLA_HEADLESS=1 \
+            SLA_DATA_DIR="$RUNNER_TEMP/sla-smoke" \
+            SLA_CAMOUFOX_DIR="$PWD/vendor/camoufox" \
+            ./sidecar/dist/sla-sidecar/sla-sidecar > "$RUNNER_TEMP/sidecar.log" 2>&1 &
+          for i in $(seq 1 40); do
+            if curl -sf http://127.0.0.1:8765/healthz > /dev/null; then ok=1; break; fi
+            sleep 1
+          done
+          kill %1 2>/dev/null || true
+          cat "$RUNNER_TEMP/sidecar.log"
+          test "${ok:-0}" = "1"
+
+      - name: Build Electron installer (dmg + zip)
+        working-directory: desktop
+        run: |
+          npm install
+          npm run dist:mac
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: scraping-local-auto-mac
+          path: |
+            desktop/dist/*.dmg
+            desktop/dist/*.zip
+          if-no-files-found: error

@@ -11,7 +11,8 @@ captcha/OTP lolos otomatis — sisanya berjalan sendiri. Semua data tersimpan lo
    install Python atau browser apa pun (semua runtime sudah terbundel).
 3. Buka aplikasi dari Start Menu / shortcut desktop. Jendela aplikasi terbuka sendiri.
 
-> Mac/Linux: installer belum tersedia — hubungi developer pusat.
+> Mac: installer `.dmg` belum dirilis (build harus di mesin Mac — hubungi developer pusat).
+> Linux: belum tersedia.
 > Bila muncul dialog **"Port dipakai"**: ada aplikasi lain memakai port 8765 di komputer ini.
 > Tutup aplikasi itu, lalu buka ulang aplikasi ini. Bila bingung, hubungi developer.
 

@@ -92,11 +92,22 @@ class Session:
         if bundle:
             # T24: Camoufox terbundel installer — tanpa unduh runtime. UBO di-exclude:
             # addons default resolve ke cache user (INSTALL_DIR), bukan ke bundle.
+            # Layout per OS: win/lin executable di root bundle; mac di Camoufox.app/Contents/MacOS.
             import json
+            import sys
             from camoufox.addons import DefaultAddons
-            with open(os.path.join(bundle, "version.json"), encoding="utf-8") as f:
+            if sys.platform == "darwin":
+                exe = os.path.join(bundle, "Camoufox.app", "Contents", "MacOS", "camoufox")
+                ver = os.path.join(bundle, "Camoufox.app", "Contents", "Resources", "version.json")
+            elif sys.platform == "win32":
+                exe = os.path.join(bundle, "camoufox.exe")
+                ver = os.path.join(bundle, "version.json")
+            else:
+                exe = os.path.join(bundle, "camoufox-bin")
+                ver = os.path.join(bundle, "version.json")
+            with open(ver, encoding="utf-8") as f:
                 ff_version = json.load(f)["version"].split(".", 1)[0]
-            kwargs.update(executable_path=os.path.join(bundle, "camoufox.exe"),
+            kwargs.update(executable_path=exe,
                           ff_version=ff_version, exclude_addons=[DefaultAddons.UBO])
         self._camoufox_cm = Camoufox(**kwargs)
         self._ctx = self._camoufox_cm.__enter__()
