@@ -10,6 +10,8 @@ from .siberpos import SiberPosCrawler
 from .esbv2 import EsbV2Crawler
 from .majoo import MajooCrawler
 from .loyverse import LoyverseCrawler
+from .esblitepos import EsbLitePosCrawler
+from .esblitev2pos import EsbLiteV2PosCrawler
 
 
 @dataclass(frozen=True)
@@ -35,6 +37,10 @@ REGISTRY = [
             "Turnstile latar belakang (Camoufox; pause user bila interaktif)", True, MajooCrawler, milestone="M1"),
     PosMeta("loyverse", "Loyverse", "https://loyverse.com", 31,
             "reCAPTCHA v2 invisible (Camoufox; pause user bila interaktif)", True, LoyverseCrawler, milestone="M1"),
+    PosMeta("esblitepos", "ESB POS Lite", "https://poslite.esb.co.id", 31,
+            "reCAPTCHA (Camoufox; pause user bila interaktif)", True, EsbLitePosCrawler, milestone="M1"),
+    PosMeta("esblitev2pos", "ESB POS Lite V2", "https://poslite.esb.co.id", 31,
+            "reCAPTCHA (Camoufox; pause user bila interaktif)", True, EsbLiteV2PosCrawler, milestone="M1"),
     PosMeta("kasirstaff", "KasirStaffPOS", "(URL menunggu Q3)", 31, "belum diketahui", False, milestone="M1"),
 ]
 
