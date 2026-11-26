@@ -126,7 +126,8 @@ cd desktop && npm install
 npm run dist:win                         # -> dist/Scraping Lokal Otomatis Setup 0.1.0.exe (~302 MB)
 ```
 
-- Install: dobel-klik setup (NSIS oneClick per-user, tanpa admin) atau silent `setup.exe /S`.
+- Install: dobel-klik setup → wizard NSIS (assisted, per-user tanpa admin) dengan **pilihan
+  direktori install** (mis. drive D: bila C: penuh); atau silent `setup.exe /S` (folder default).
   Data app terpasang: `%APPDATA%/scraping-local-auto-desktop/data` (terpisah dari repo).
 - `desktop/main.js`: precheck port dipakai → dialog; single-instance lock; spawn sidecar
   (`SLA_NO_BROWSER=1`, `SLA_HEADLESS=1`, `SLA_CAMOUFOX_DIR=resources/camoufox`); tunggu `/healthz`; buka window;

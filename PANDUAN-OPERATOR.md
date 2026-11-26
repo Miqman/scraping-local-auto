@@ -7,8 +7,10 @@ captcha/OTP lolos otomatis — sisanya berjalan sendiri. Semua data tersimpan lo
 ## 1. Install (Windows)
 
 1. Dobel-klik **`Scraping Lokal Otomatis Setup 0.1.0.exe`**.
-2. Tunggu sampai selesai — tidak perlu pilih folder, tidak perlu hak admin, tidak perlu
-   install Python atau browser apa pun (semua runtime sudah terbundel).
+2. Wizard install muncul → klik **Next** → **pilih folder install**. Bila drive C: penuh,
+   klik **Browse** dan pilih folder di drive lain (mis. `D:\Apps`). Tidak perlu hak admin
+   selama memilih folder user biasa (hindari `C:\Program Files`). Klik **Install**.
+   Tidak perlu install Python atau browser apa pun (semua runtime sudah terbundel).
 3. Buka aplikasi dari Start Menu / shortcut desktop. Jendela aplikasi terbuka sendiri.
 
 > Mac: installer `.dmg` belum dirilis (build harus di mesin Mac — hubungi developer pusat).

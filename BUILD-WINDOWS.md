@@ -204,10 +204,14 @@ memperingatkan saat pertama dibuka.
 
 1. Dobel-klik **`Scraping Lokal Otomatis Setup 0.1.0.exe`**.
    - Bila SmartScreen muncul: klik **"More info"** → **"Run anyway"**.
-2. Install otomatis (NSIS oneClick per-user, **tanpa hak admin**, tanpa pilih folder).
+2. Wizard install muncul (NSIS assisted, per-user **tanpa hak admin**). Klik **Next**, lalu
+   **pilih folder install** (default di drive C: user; klik **Browse** untuk pindah ke drive lain,
+   mis. `D:\Apps` bila C: penuh) → **Install**. Pilih folder user biasa, hindari `C:\Program Files`
+   (folder sistem minta admin/UAC).
 3. Buka aplikasi dari Start Menu / shortcut desktop. Jendela aplikasi terbuka sendiri.
 
-> Install silent (untuk deployment massal): `setup.exe /S`
+> Install silent (deployment massal, folder default): `setup.exe /S`
+> Silent dengan folder custom: `setup.exe /S /D=D:\Apps\ScrapingLokal` (`/D=` harus argumen terakhir, tanpa kutip).
 > Data app terpasang: `%APPDATA%\scraping-local-auto-desktop\data` (terpisah dari repo).
 
 ---
