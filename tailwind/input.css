@@ -174,6 +174,33 @@
   @apply border-danger focus:border-danger focus:ring-danger/15;
 }
 
+/* Toggle switch (checkbox) — jadwal otomatis per akun/POS/all. Track 36x20, knob 16. */
+@utility toggle {
+  @apply appearance-none relative shrink-0 w-9 h-5 rounded-full bg-hairline cursor-pointer transition-colors align-middle;
+}
+.toggle::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: var(--color-surface);
+  box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.2);
+  transition: transform 0.15s ease;
+}
+.toggle:checked {
+  background: var(--color-primary);
+}
+.toggle:checked::after {
+  transform: translateX(16px);
+}
+.toggle:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
 /* Tailwind v4 juga menerbitkan utilitas bawaan `.overline { text-decoration-line: overline }`
    (garis di atas teks) SETELAH @utility kustom di layer yang sama, sehingga menang cascade.
    Override unlayered di bawah mengalahkan semua @layer -> garis hilang, gaya label tetap. */

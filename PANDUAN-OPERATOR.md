@@ -57,12 +57,14 @@ captcha/OTP lolos otomatis — sisanya berjalan sendiri. Semua data tersimpan lo
 
 ## 5. Jadwal otomatis (opsional)
 
-Menu **Jadwal Otomatis** (sidebar Konfigurasi) → klik nama POS untuk membuka daftar akunnya →
-isi **interval menit** (minimal 1, default 60) + centang **Aktif** → simpan (ikon check).
-Aplikasi menarik data **menyambung job terakhir akun itu** — mulai sehari setelah tanggal akhir job
-terakhir sampai hari ini (job pertama: kemarin–hari ini), dan **memakai cabang yang sama dengan job
-terakhir** (bila job terakhir hanya 1 cabang, jadwal juga hanya 1 cabang itu — bukan semua cabang).
-Jadi tidak selalu tanggal yang sama; rentang & cabang maju mengikuti job yang sudah ada.
+Menu **Jadwal Otomatis** (sidebar Konfigurasi) → **toggle sekali klik** per akun, per POS, atau
+"Semua merchant"; interval menit (minimal 1, default 60) bisa diedit langsung di kolomnya;
+ada kolom pencarian bila akun banyak.
+Aplikasi menarik data **dengan rentang tanggal yang sama persis dengan job terakhir akun itu**
+(refresh data yang sama, tanpa geser tanggal; job pertama: kemarin–hari ini), dan **memakai cabang
+yang sama dengan job terakhir** (bila job terakhir hanya 1 cabang, jadwal juga hanya 1 cabang itu —
+bukan semua cabang). Ingin rentang lain? Jalankan **Job Baru** manual sekali — jadwal berikutnya
+mengikuti rentang job terbaru itu.
 Transaksi yang sama tidak disimpan dobel (dedup per akun).
 
 - **Hanya saat aplikasi terbuka.** Aplikasi tertutup = jadwal tidak berjalan; tidak ada backfill

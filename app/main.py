@@ -4,7 +4,7 @@ Bind hanya 127.0.0.1 (S1). Status live via polling 2 detik; DB = sumber kebenara
 import logging
 import shutil
 from contextlib import asynccontextmanager
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 import crawlers
-from . import crypto, db, demo_pos, export, security
+from . import crypto, db, demo_pos, export, plugins, security
 from .paths import STATIC_DIR, TEMPLATES_DIR, profile_dir
 from .runner import MAX_ATTEMPTS, Runner
 from .scheduler import MIN_INTERVAL, Scheduler
@@ -23,6 +23,22 @@ scheduler = Scheduler()
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 templates.env.globals["pos_registry"] = crawlers.REGISTRY
 templates.env.globals["app_version"] = "M0 · v0.1.0"
+
+
+def _local_dt(iso: str) -> str:
+    """Timestamp DB (UTC '...Z' atau lokal tanpa zona) -> waktu lokal mesin, 'YYYY-MM-DD HH:MM:SS'."""
+    if not iso:
+        return ""
+    try:
+        dt = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+    except ValueError:
+        return str(iso).replace("T", " ").replace("Z", "")
+    if dt.tzinfo is not None:
+        dt = dt.astimezone()  # UTC -> zona waktu lokal mesin operator
+    return dt.strftime("%Y-%m-%d %H:%M:%S")
+
+
+templates.env.filters["local_dt"] = _local_dt
 
 JOB_LABEL = {"queued": "Antri", "running": "Berjalan", "waiting_user": "Menunggu User",
              "done": "Selesai", "partial": "Parsial", "failed": "Gagal"}
@@ -82,6 +98,7 @@ async def lifespan(app: FastAPI):
     if p:
         log.info("retensi E18: %d job >90 hari dihapus", p)
     _seed_demo()
+    plugins.load_all()  # POS import (data/plugins) aktif lagi tanpa update aplikasi
     await runner.start()
     await scheduler.start()
     yield
@@ -95,10 +112,10 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 app.include_router(demo_pos.router)
 
 
-def render(request: Request, name: str, status_code: int = 200, **kw):
+def render(request: Request, name: str, status_code: int = 200, headers: dict = None, **kw):
     base = {"csrf": security.csrf_token(request), "keyfile_warning": crypto.using_keyfile}
     base.update(kw)
-    return templates.TemplateResponse(request, name, base, status_code=status_code)
+    return templates.TemplateResponse(request, name, base, status_code=status_code, headers=headers)
 
 
 def hx_trigger(response_headers: dict, payload: dict):
@@ -316,7 +333,7 @@ def retry_all(request: Request, job_id: int):
     hx_trigger(headers, {"toast": {"msg": f"{n} cabang dijadwalkan ulang" if n
                                    else "Tidak ada cabang gagal yang bisa di-retry (maks 3 attempt)",
                                    "kind": "success" if n else "error"}})
-    return render(request, "_job_live.html", **_live_ctx(request, job_id))
+    return render(request, "_job_live.html", headers=headers, **_live_ctx(request, job_id))
 
 
 @app.post("/jobs/{job_id}/branches/{branch_id}/retry", response_class=HTMLResponse)
@@ -326,7 +343,7 @@ def retry_branch(request: Request, job_id: int, branch_id: int):
     hx_trigger(headers, {"toast": {"msg": "Cabang dijadwalkan ulang" if n
                                    else "Cabang tidak bisa di-retry (status/maks 3 attempt)",
                                    "kind": "success" if n else "error"}})
-    return render(request, "_job_live.html", **_live_ctx(request, job_id))
+    return render(request, "_job_live.html", headers=headers, **_live_ctx(request, job_id))
 
 
 @app.get("/jobs/{job_id}/export")
@@ -381,10 +398,19 @@ def accounts_page(request: Request):
                   active_page="accounts")
 
 
+def _filter_schedules(rows, q: str):
+    q = (q or "").strip().lower()
+    if not q:
+        return rows
+    return [s for s in rows if q in s["label"].lower() or q in s["username"].lower()
+            or q in s["pos_code"].lower()]
+
+
 @app.get("/schedules", response_class=HTMLResponse)
 def schedules_page(request: Request):
-    return render(request, "schedules.html", schedules=db.list_schedules(),
-                  open_pos="", active_page="schedules")
+    q = request.query_params.get("q", "")
+    return render(request, "schedules.html", schedules=_filter_schedules(db.list_schedules(), q),
+                  open_pos="", q=q, active_page="schedules")
 
 
 @app.get("/partials/accounts", response_class=HTMLResponse)
@@ -394,7 +420,26 @@ def accounts_partial(request: Request):
 
 @app.get("/partials/schedules", response_class=HTMLResponse)
 def schedules_partial(request: Request):
-    return render(request, "_schedules.html", schedules=db.list_schedules(), open_pos="")
+    q = request.query_params.get("q", "")
+    return render(request, "_schedules.html", schedules=_filter_schedules(db.list_schedules(), q),
+                  open_pos="", q=q)
+
+
+@app.post("/schedules/bulk", response_class=HTMLResponse)
+async def bulk_schedule(request: Request):
+    form = await request.form()
+    scope = str(form.get("scope", "all")).strip()
+    enabled = form.get("enabled") == "1"
+    headers = {}
+    pos_code = None if scope == "all" else scope
+    if pos_code is not None and pos_code not in crawlers.BY_CODE:
+        hx_trigger(headers, {"toast": {"msg": f"POS {scope} tidak dikenal", "kind": "error"}})
+        return PlainTextResponse("", status_code=422, headers=headers)
+    n = db.bulk_set_schedule(enabled, pos_code)
+    label = "semua merchant" if pos_code is None else crawlers.BY_CODE[pos_code].name
+    hx_trigger(headers, {"toast": {"msg": f"Jadwal {label} {'diaktifkan' if enabled else 'dinonaktifkan'} ({n} akun)",
+                                   "kind": "success"}, "refreshSchedules": True})
+    return render(request, "_schedules.html", schedules=db.list_schedules(), open_pos=pos_code or "", q="", headers=headers)
 
 
 @app.post("/accounts/{account_id}/schedule", response_class=HTMLResponse)
@@ -414,10 +459,10 @@ async def save_schedule(request: Request, account_id: int):
         hx_trigger(headers, {"toast": {"msg": "Interval minimal 1 menit", "kind": "error"}})
         return PlainTextResponse("", status_code=422, headers=headers)
     db.upsert_schedule(account_id, enabled, interval)
-    hx_trigger(headers, {"toast": {"msg": f"Jadwal {'diaktifkan' if enabled else 'dinonaktifkan'} — tiap {interval} menit, rentang kemarin–hari ini",
+    hx_trigger(headers, {"toast": {"msg": f"Jadwal {'diaktifkan' if enabled else 'dinonaktifkan'} — tiap {interval} menit, rentang sama dengan job terakhir",
                                    "kind": "success"}, "refreshSchedules": True})
     return render(request, "_schedules.html", schedules=db.list_schedules(),
-                  open_pos=open_pos or account["pos_code"])
+                  open_pos=open_pos or account["pos_code"], q="", headers=headers)
 
 
 @app.get("/accounts/modal", response_class=HTMLResponse)
@@ -484,6 +529,47 @@ def delete_account(request: Request, account_id: int):
     hx_trigger(headers, {"toast": {"msg": "Akun + profil browser dihapus", "kind": "success"},
                          "closeModal": True, "refreshAccounts": True, "refreshSchedules": True})
     return PlainTextResponse("", status_code=204, headers=headers)
+
+
+# ================= Import POS (plugin manual) =================
+
+def _plugins_ctx():
+    return {"plugins": plugins.list_plugins(), "builtin_codes": [
+        p.code for p in crawlers.REGISTRY if p.milestone != "import"]}
+
+
+@app.get("/plugins", response_class=HTMLResponse)
+def plugins_page(request: Request):
+    return render(request, "plugins.html", active_page="plugins", **_plugins_ctx())
+
+
+@app.post("/plugins/import", response_class=HTMLResponse)
+async def import_plugin(request: Request):
+    form = await request.form()
+    upload = form.get("file")
+    headers = {}
+    data = await upload.read() if upload is not None and hasattr(upload, "read") else b""
+    try:
+        entry = plugins.import_bytes(data)
+    except ValueError as exc:
+        # 200 + toast error: htmx tidak swap non-2xx; pola penolakan rumah = save_schedule
+        hx_trigger(headers, {"toast": {"msg": str(exc), "kind": "error"}, "refreshPlugins": True})
+        return render(request, "_plugins_table.html", headers=headers, **_plugins_ctx())
+    hx_trigger(headers, {"toast": {"msg": f"POS {entry['name']} ({entry['code']}) siap dipakai — "
+                                          "buat akun merchant untuk POS ini", "kind": "success"},
+                         "refreshPlugins": True})
+    return render(request, "_plugins_table.html", headers=headers, **_plugins_ctx())
+
+
+@app.post("/plugins/{code}/delete", response_class=HTMLResponse)
+def delete_plugin(request: Request, code: str):
+    headers = {}
+    if not plugins.delete(code):
+        raise HTTPException(404)
+    hx_trigger(headers, {"toast": {"msg": f"POS {code} dihapus — akun terkait tidak bisa job baru "
+                                          "sampai file diimport lagi", "kind": "success"},
+                         "refreshPlugins": True})
+    return render(request, "_plugins_table.html", headers=headers, **_plugins_ctx())
 
 
 @app.get("/healthz")

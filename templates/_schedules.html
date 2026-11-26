@@ -1,13 +1,33 @@
 <section id="schedules-card" class="card overflow-hidden"
-  hx-get="/partials/schedules" hx-trigger="refreshSchedules from:body" hx-target="this" hx-swap="outerHTML">
+  hx-get="/partials/schedules" hx-trigger="refreshSchedules from:body" hx-target="this" hx-swap="outerHTML"
+  hx-vals='js:{q: document.getElementById("sched-q") ? document.getElementById("sched-q").value : ""}'>
   <div class="px-5 py-4 border-b border-hairline">
     <div class="overline mb-1">Otomasi · Per Akun</div>
     <h2 class="text-[16px] font-semibold text-ink">Jadwal otomatis</h2>
     <p class="mt-1 text-[13px] text-muted leading-relaxed max-w-2xl">
-      Interval menit per akun (minimal 1) — rentang <span class="font-medium text-ink">menyambung job terakhir akun</span> (sehari setelah tanggal akhir terakhir → hari ini),
+      Toggle sekali klik per akun, per POS, atau semua merchant; interval menit (minimal 1) bisa diedit inline — rentang <span class="font-medium text-ink">sama persis dengan job terakhir akun</span> (refresh data yang sama, tanpa geser tanggal; job pertama: kemarin → hari ini),
       hanya berjalan saat aplikasi terbuka, tanpa backfill; bila terlewat, dijalankan sekali saat aplikasi dibuka (catch-up).
       Job muncul di Dashboard seperti job manual (retry/export sama).
     </p>
+  </div>
+  <div class="px-5 py-3 border-b border-hairline flex flex-wrap items-center gap-3">
+    <div id="sched-search" hx-preserve class="relative flex-1 sm:flex-initial">
+      <i data-lucide="search" class="w-4 h-4 text-subtle absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+      <input id="sched-q" name="q" type="text" value="{{ q }}" placeholder="Cari akun, username, atau POS…"
+        class="control w-full sm:w-72 pl-9 pr-3" aria-label="Cari akun, username, atau POS"
+        hx-get="/partials/schedules" hx-trigger="keyup changed delay:300ms"
+        hx-target="#schedules-card" hx-swap="outerHTML"
+        hx-vals='js:{q: document.getElementById("sched-q").value}'>
+    </div>
+    {% set all_enabled = schedules | length > 0 and (schedules | selectattr('enabled') | list | length == schedules | length) %}
+    <label class="flex items-center gap-2 cursor-pointer text-[13px] text-muted">
+      <input type="checkbox" id="bulk-all" class="toggle" {% if all_enabled %}checked{% endif %}
+        aria-label="Jadwal semua merchant"
+        hx-post="/schedules/bulk" hx-confirm="Ubah status jadwal SEMUA merchant?"
+        hx-vals='js:{scope: "all", enabled: document.getElementById("bulk-all").checked ? "1" : "0"}'
+        hx-target="#schedules-card" hx-swap="outerHTML">
+      Semua merchant
+    </label>
   </div>
   {% if schedules %}
   <div class="divide-y divide-hairline">
@@ -22,6 +42,14 @@
         <span class="text-[11px] text-warning">crawler belum tersedia — dilewati scheduler</span>
         {% endif %}
         <span class="flex-1"></span>
+        <label class="flex items-center cursor-pointer shrink-0" onclick="event.stopPropagation()" title="Jadwal semua akun {{ p.name }}">
+          <input type="checkbox" id="pos-toggle-{{ p.code }}" class="toggle"
+            {% if rows | selectattr('enabled') | list | length == rows | length %}checked{% endif %}
+            aria-label="Jadwal semua akun {{ p.name }}"
+            hx-post="/schedules/bulk"
+            hx-vals='js:{scope: "{{ p.code }}", enabled: document.getElementById("pos-toggle-{{ p.code }}").checked ? "1" : "0"}'
+            hx-target="#schedules-card" hx-swap="outerHTML">
+        </label>
         <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-subtle shrink-0"></i>
       </summary>
       <div class="overflow-x-auto [contain:paint] border-t border-hairline">
@@ -41,26 +69,24 @@
                 <div class="text-[11px] text-subtle font-mono">{{ s.pos_code }} · {{ s.username }}</div>
               </td>
               <td class="py-3.5 pl-4 pr-4 align-middle">
-                <form hx-post="/accounts/{{ s.account_id }}/schedule" hx-target="#schedules-card" hx-swap="outerHTML"
-                  class="flex items-center gap-3 flex-wrap">
-                  <input type="hidden" name="csrf_token" value="{{ csrf }}">
-                  <input type="hidden" name="open_pos" value="{{ p.code }}">
-                  <input type="number" name="interval_minutes" min="1" step="1" value="{{ s.interval_minutes }}" required
-                    class="control w-[120px] px-2 tabular-nums" aria-label="Interval menit {{ s.label }}">
-                  <span class="text-[11px] text-subtle">menit</span>
-                  <label class="flex items-center gap-2 cursor-pointer text-[13px] text-muted">
-                    <input type="checkbox" name="enabled" value="1" {% if s.enabled %}checked{% endif %}
-                      class="w-4 h-4 accent-primary cursor-pointer">
-                    Aktif
+                <div class="flex items-center gap-3 flex-wrap">
+                  <label class="flex items-center cursor-pointer shrink-0">
+                    <input type="checkbox" id="toggle-{{ s.account_id }}" class="toggle" {% if s.enabled %}checked{% endif %}
+                      aria-label="Jadwal {{ s.label }}"
+                      hx-post="/accounts/{{ s.account_id }}/schedule"
+                      hx-vals='js:{enabled: document.getElementById("toggle-{{ s.account_id }}").checked ? "1" : "0", interval_minutes: document.getElementById("interval-{{ s.account_id }}").value, open_pos: "{{ p.code }}"}'
+                      hx-target="#schedules-card" hx-swap="outerHTML">
                   </label>
-                  <button type="submit" title="Simpan jadwal"
-                    class="h-8 w-8 rounded-control border border-hairline text-muted hover:text-primary hover:bg-primary-subtle flex items-center justify-center transition-colors cursor-pointer shrink-0">
-                    <i data-lucide="check" class="w-3.5 h-3.5"></i>
-                  </button>
-                </form>
+                  <input type="number" id="interval-{{ s.account_id }}" min="1" step="1" value="{{ s.interval_minutes }}" required
+                    class="control w-[90px] px-2 tabular-nums" aria-label="Interval menit {{ s.label }}"
+                    hx-post="/accounts/{{ s.account_id }}/schedule" hx-trigger="change"
+                    hx-vals='js:{enabled: document.getElementById("toggle-{{ s.account_id }}").checked ? "1" : "0", interval_minutes: document.getElementById("interval-{{ s.account_id }}").value, open_pos: "{{ p.code }}"}'
+                    hx-target="#schedules-card" hx-swap="outerHTML">
+                  <span class="text-[11px] text-subtle">menit</span>
+                </div>
               </td>
               <td class="py-3.5 pl-4 pr-5 align-middle tabular-nums text-[13px] text-muted whitespace-nowrap">
-                {{ s.last_run_at.replace('T', ' ') if s.last_run_at else 'belum' }}
+                {{ s.last_run_at | local_dt if s.last_run_at else 'belum' }}
               </td>
             </tr>
             {% endfor %}
@@ -75,6 +101,11 @@
     Maks 2 job paralel &amp; antrian per akun tetap berlaku (E6/E7). Akun dengan job aktif atau gagal auth dilewati scheduler
     sampai antrian kosong / job di-retry.
   </p>
+  {% elif q %}
+  <div class="py-10 px-6 text-center">
+    <h3 class="text-sm font-semibold text-ink">Tidak ada akun cocok dengan '{{ q }}'</h3>
+    <p class="text-[13px] text-muted mt-1">Coba kata kunci lain, atau kosongkan pencarian.</p>
+  </div>
   {% else %}
   <div class="py-10 px-6 text-center">
     <div class="w-11 h-11 rounded-full bg-hairline-subtle text-muted flex items-center justify-center mx-auto mb-3">

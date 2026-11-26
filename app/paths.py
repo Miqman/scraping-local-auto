@@ -32,6 +32,13 @@ def profile_dir(account_id: int) -> Path:
     return d
 
 
+
+def plugins_dir() -> Path:
+    d = data_dir() / "plugins"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
 def exports_dir() -> Path:
     d = data_dir() / "exports"
     d.mkdir(parents=True, exist_ok=True)

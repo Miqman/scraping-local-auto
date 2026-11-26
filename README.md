@@ -89,13 +89,13 @@ Dump DOM tersanitasi untuk diagnosa selector: env `SLA_DEBUG_DUMP=1` → `data/d
 ## Jadwal otomatis (T22, story 6 — v2 interval menit)
 
 **Interval menit per akun (minimal 1, default 60)**, opt-in. UI: halaman **Jadwal Otomatis** (menu
-sidebar Konfigurasi) berupa accordion per POS (`<details>` native) — klik POS → daftar akun +
-input interval menit + toggle Aktif + tombol simpan. Scheduler in-process (`app/scheduler.py`,
-tick 10 detik) membuat job `queued` yang **menyambung rentang job terakhir akun** (mulai H+1 setelah
-`date_to` terakhir sampai hari ini; job pertama akun = kemarin..hari ini) dan **memakai ulang cabang
-job terakhir** (`db.last_job_branches`; akun belum punya job → auto-fetch semua) — runner mengambilnya
-seperti job manual: batas E6 (akun sama antri) / E7 (maks 2 paralel), retry, export, status live sama.
-Override manual = **Job Baru**.
+sidebar Konfigurasi) berupa accordion per POS (`<details>` native) — search akun/username/POS,
+toggle sekali klik per akun / per POS / semua merchant, interval edit inline langsung simpan.
+Scheduler in-process (`app/scheduler.py`, tick 10 detik) membuat job `queued` yang **mengulang rentang
+job terakhir akun PERSIS** (refresh data yang sama, tanpa geser tanggal; job pertama akun =
+kemarin..hari ini) dan **memakai ulang cabang job terakhir** (`db.last_job_branches`; akun belum punya
+job → auto-fetch semua) — runner mengambilnya seperti job manual: batas E6 (akun sama antri) / E7
+(maks 2 paralel), retry, export, status live sama. Override manual = **Job Baru**.
 
 - **Hanya saat aplikasi terbuka** — scheduler hidup di proses app; tutup = tidak jalan, tanpa backfill.
 - **At-most-once per interval:** `last_run_at` ditandai sebelum job dibuat; due bila `now >= last_run_at + interval`.
@@ -174,6 +174,30 @@ npm run dist:win                         # -> dist/Scraping Lokal Otomatis Setup
 
 Runner mengurus sisanya: antrian per akun (E6), maks 2 paralel (E7), attempt ≤3 + re-login ≤2 (E3/S7),
 pause/resume captcha (W2), commit per cabang + dedup per akun lintas job (W3/E10), recovery restart (E5).
+
+## Import POS (plugin manual, tanpa update aplikasi)
+
+User mengimpor file crawler `.py` kiriman developer lewat halaman **Import POS** (`/plugins`):
+file disimpan di `data/plugins/<pos_code>.py`, dimuat runtime (`app/plugins.py`, importlib),
+dan langsung terdaftar di registry — dropdown POS, form akun/job, scheduler ikut otomatis.
+Persisten lintas restart (scan saat startup) dan selamat saat app di-reinstall (direktori data).
+Update aplikasi hanya diperlukan untuk fitur app-level (mis. kirim FTP) atau bila `PLUGIN_API` naik.
+
+Kontrak file plugin (beda dari crawler bawaan hanya di import + deklarasi):
+
+1. Import **absolut** (`from crawlers.base import Crawler, CrawlContext, date_chunks, stable_trx_id`),
+   hanya stdlib + dependensi yang sudah dibundle app — tanpa pip, tanpa import relatif (`from .base`).
+2. Deklarasi `PLUGIN_API = 1` (harus cocok `crawlers.base.PLUGIN_API`; tidak cocok = ditolak dengan
+   pesan minta file baru) dan opsional `PLUGIN_VERSION = "x.y"` (tampil di tabel Import POS).
+3. Tepat satu subclass `Crawler` dengan `pos_code` unik (huruf kecil/angka/`-`/`_`, 2–32 karakter);
+   bentrok POS bawaan ditolak, sesama plugin = overwrite (kirim ulang file = update POS).
+4. Isi kelas mengikuti pola crawler bawaan di atas (login/list_branches/scrape_branch, `CrawlError`,
+   `trx_id` stabil, uang string exact). Sertakan `_self_check()` + uji satu job nyata sebelum dikirim.
+
+Keamanan: file `.py` adalah kode program yang berjalan dengan hak aplikasi (bisa membaca `data/app.db`
+dan kredensial di memori) — UI menampilkan peringatan; import hanya file dari pengirim terpercaya.
+Tidak ada request eksternal: distribusi file tetap manual (PRD §11 utuh). Hapus plugin: akun lama
+ tetap ada tetapi job baru ditolak ("crawler belum tersedia") sampai file diimport lagi.
 
 ## Keamanan (PRD §11)
 

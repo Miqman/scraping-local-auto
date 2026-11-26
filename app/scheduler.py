@@ -3,15 +3,14 @@
 Tiap akun punya `interval_minutes` (min 1). Tick tiap TICK_S detik memeriksa
 jadwal enabled yang jatuh tempo: now >= last_run_at + interval. Catch-up:
 app dibuka setelah lewat -> langsung due sekali; tanpa backfill hari-hari
-sebelumnya saat app tertutup. Job `queued` menyambung rentang job terakhir akun:
-mulai H+1 setelah date_to terakhir sampai hari ini (job pertama: kemarin..hari ini);
-bila sudah mencakup hari ini, rentang diulang (refresh). Cabang job = pilihan cabang job
+sebelumnya saat app tertutup. Job `queued` mengulang rentang job terakhir akun PERSIS
+(refresh data yang sama; job pertama: kemarin..hari ini). Cabang job = pilihan cabang job
 terakhir akun (bukan auto-fetch semua); akun belum punya job -> auto-fetch. Runner mengambil
 job queued seperti biasa — batas E6/E7 tetap berlaku. Override manual = Job Baru.
 
 Pengaman:
 - A: akun sedang punya job aktif -> skip tanpa menandai (jangan menumpuk antrian).
-- B: rentang menyambung job terakhir akun (bukan selalu kemarin–hari ini).
+- B: rentang = job terakhir akun persis (bukan kemarin–hari ini, bukan geser H+1).
 - C: job terbaru gagal auth -> skip tanpa menandai + warning; berhenti sampai
   job di-retry/manual (cegah lockout akun).
 - D: purge job lama sekali per ganti hari.
@@ -88,17 +87,16 @@ class Scheduler:
                 continue
             prev = db.last_job_range(aid)
             if prev:
-                # sambung dari job terakhir akun: mulai H+1 setelah date_to terakhir, sampai hari ini.
-                # Bila sudah mencakup hari ini (date_to >= today), ulang rentang yang sama (refresh).
-                start = (date.fromisoformat(prev[1]) + timedelta(days=1)).isoformat()
-                d_from = min(start, today)
+                # Ulang rentang job terakhir PERSIS (refresh data yang sama, tanpa geser
+                # tanggal). Dedup trx_id per akun membuat tarikan ulang tidak mendobel.
+                d_from, d_to = prev
             else:
-                d_from = yesterday  # job pertama akun: kemarin..hari ini
+                d_from, d_to = yesterday, today  # job pertama akun: kemarin..hari ini
             branches = db.last_job_branches(aid)  # ulang pilihan cabang job terakhir; [] = auto-fetch semua
-            job_id = db.create_job(aid, s["pos_code"], d_from, today, branches)
+            job_id = db.create_job(aid, s["pos_code"], d_from, d_to, branches)
             n += 1
             log.info("scheduler: job %s dibuat (akun %s %s, rentang %s..%s)",
-                     job_id, aid, s["label"], d_from, today)
+                     job_id, aid, s["label"], d_from, d_to)
         return n
 
 
@@ -169,27 +167,38 @@ def _self_check() -> None:
         assert fake.events == [("mark", 1, "2026-11-23T08:00:00"),
                                ("job", 1, "demo", "2026-11-22", "2026-11-23", [])]
         assert fake.purges == 1
-        # job terakhir 20..21 -> sambung 22..hari ini (bukan selalu D-1)
+        # job terakhir 20..21 -> ulang PERSIS 20..21 (refresh, tanpa geser tanggal)
         fake = FakeDB([row()], ranges={1: ("2026-11-20", "2026-11-21")})
         db = fake
         assert Scheduler().run_due(t0) == 1
-        assert fake.events[-1] == ("job", 1, "demo", "2026-11-22", "2026-11-23", [])
+        assert fake.events[-1] == ("job", 1, "demo", "2026-11-20", "2026-11-21", [])
         # job terakhir punya cabang tunggal -> scheduler pakai cabang itu, bukan []
         fake = FakeDB([row()], ranges={1: ("2026-11-20", "2026-11-21")},
                       branches={1: [("outlet-01", "Outlet 01")]})
         db = fake
         assert Scheduler().run_due(t0) == 1
-        assert fake.events[-1] == ("job", 1, "demo", "2026-11-22", "2026-11-23", [("outlet-01", "Outlet 01")])
-        # job terakhir sudah mencakup hari ini (22..23) -> ulang rentang sama (refresh)
+        assert fake.events[-1] == ("job", 1, "demo", "2026-11-20", "2026-11-21", [("outlet-01", "Outlet 01")])
+        # REGRESI user: job terakhir historis (Oct30..31) -> ulang PERSIS Oct30..31,
+        # BUKAN geser ke Nov1..hari ini. Tanggal tidak berubah sedikit pun.
+        fake = FakeDB([row()], ranges={1: ("2026-10-30", "2026-10-31")})
+        db = fake
+        assert Scheduler().run_due(t0) == 1
+        assert fake.events[-1] == ("job", 1, "demo", "2026-10-30", "2026-10-31", [])
+        # job terakhir 1 hari (21..21) -> ulang PERSIS 21..21
+        fake = FakeDB([row()], ranges={1: ("2026-11-21", "2026-11-21")})
+        db = fake
+        assert Scheduler().run_due(t0) == 1
+        assert fake.events[-1] == ("job", 1, "demo", "2026-11-21", "2026-11-21", [])
+        # job terakhir mencakup hari ini (22..23) -> ulang PERSIS 22..23
         fake = FakeDB([row()], ranges={1: ("2026-11-22", "2026-11-23")})
         db = fake
         assert Scheduler().run_due(t0) == 1
-        assert fake.events[-1] == ("job", 1, "demo", "2026-11-23", "2026-11-23", [])
-        # job terakhir di masa depan (date_to > today) -> mulai today (tak mundur)
+        assert fake.events[-1] == ("job", 1, "demo", "2026-11-22", "2026-11-23", [])
+        # job terakhir di masa depan (date_to > today) -> ulang PERSIS (tak digeser)
         fake = FakeDB([row()], ranges={1: ("2026-11-25", "2026-11-26")})
         db = fake
         assert Scheduler().run_due(t0) == 1
-        assert fake.events[-1] == ("job", 1, "demo", "2026-11-23", "2026-11-23", [])
+        assert fake.events[-1] == ("job", 1, "demo", "2026-11-25", "2026-11-26", [])
         # belum due / nonaktif -> tidak ada aksi
         fake = FakeDB([row(last_run_at="2026-11-23T07:30:00"), row(aid=2, enabled=0)])
         db = fake

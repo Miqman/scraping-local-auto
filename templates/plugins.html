@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Import POS{% endblock %}
+{% block breadcrumb %}
+<a href="/" class="text-muted hover:text-ink transition-colors">Konfigurasi</a>
+<span class="text-hairline">/</span>
+<span class="font-semibold text-ink">Import POS</span>
+{% endblock %}
+{% block content %}
+<div class="mb-6">
+  <div class="overline mb-1">Konfigurasi · Ekstensi</div>
+  <h1 class="text-[28px] font-bold text-ink tracking-[-0.02em] leading-tight">Import POS</h1>
+  <p class="mt-1.5 text-[14px] text-muted max-w-xl leading-relaxed">
+    Impor file crawler .py dari developer untuk menambah POS baru tanpa update aplikasi.
+  </p>
+</div>
+
+<div class="card p-5 mb-6">
+  <form hx-post="/plugins/import" hx-encoding="multipart/form-data" hx-target="#plugins-table" hx-swap="outerHTML"
+    class="flex flex-col sm:flex-row sm:items-center gap-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <input id="plugin-file" name="file" type="file" accept=".py" required
+      class="control flex-1 px-3 py-2 text-[13px] cursor-pointer">
+    <button type="submit" class="btn-primary shrink-0">
+      <i data-lucide="upload" class="w-4 h-4"></i> Import
+    </button>
+  </form>
+  <div class="mt-4 flex items-start gap-3 rounded-card border border-warning/30 bg-warning-bg px-4 py-3">
+    <i data-lucide="triangle-alert" class="w-4 h-4 text-warning mt-0.5 shrink-0"></i>
+    <div class="text-[13px] text-ink leading-relaxed">
+      <span class="font-semibold text-warning">File .py adalah kode program.</span>
+      File berjalan dengan hak aplikasi — import hanya file dari pengirim terpercaya.
+    </div>
+  </div>
+</div>
+
+{% include "_plugins_table.html" %}
+{% endblock %}

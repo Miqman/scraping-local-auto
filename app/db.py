@@ -580,6 +580,25 @@ def upsert_schedule(account_id: int, enabled: bool, interval_minutes: int) -> No
             (account_id, int(enabled), interval_minutes, ts))
 
 
+
+def bulk_set_schedule(enabled: bool, pos_code: str = None) -> int:
+    """Aktifkan/nonaktifkan jadwal semua akun (pos_code None) atau satu POS.
+    Interval yang sudah ada dipertahankan; akun belum punya baris -> default 60 menit.
+    Return jumlah akun terdampak."""
+    ts = now()
+    with conn() as c:
+        if pos_code:
+            ids = [r["id"] for r in c.execute("SELECT id FROM accounts WHERE pos_code=?", (pos_code,))]
+        else:
+            ids = [r["id"] for r in c.execute("SELECT id FROM accounts")]
+        for aid in ids:
+            c.execute(
+                "INSERT INTO schedules(account_id,enabled,interval_minutes,updated_at) VALUES(?,?,60,?) "
+                "ON CONFLICT(account_id) DO UPDATE SET enabled=excluded.enabled, updated_at=excluded.updated_at",
+                (aid, int(enabled), ts))
+    return len(ids)
+
+
 def mark_schedule_run(account_id: int, run_at: str) -> None:
     ts = now()
     with conn() as c:

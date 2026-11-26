@@ -9,7 +9,7 @@
 </span>
 {%- endmacro %}
 
-{% macro fmt_dt(iso) %}{{ iso.replace('T', ' ').replace('Z', '') if iso else '—' }}{% endmacro %}
+{% macro fmt_dt(iso) %}{%- if iso -%}{{ iso | local_dt }}{%- else -%}—{%- endif -%}{% endmacro %}
 
 {% macro sort_th(label, col, filters, extra_class='') %}
 <th class="py-3 px-4 {{ extra_class }}">

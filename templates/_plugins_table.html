@@ -1,0 +1,62 @@
+{% import "macros.html" as m %}
+<section id="plugins-table" class="card overflow-hidden"
+  hx-get="/plugins" hx-select="#plugins-table" hx-target="this" hx-swap="outerHTML"
+  hx-trigger="refreshPlugins from:body">
+  {% if plugins %}
+  <div class="overflow-x-auto [contain:paint]">
+    <table class="w-full text-left border-collapse">
+      <thead>
+        <tr class="border-b border-hairline bg-canvas/60 text-[11px] font-semibold uppercase tracking-[0.05em] text-muted">
+          <th class="py-3 pl-5 pr-4">POS</th>
+          <th class="py-3 px-4">File</th>
+          <th class="py-3 px-4">Versi</th>
+          <th class="py-3 px-4">Status</th>
+          <th class="py-3 pl-4 pr-5 text-right"><span class="sr-only">Aksi</span></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-hairline text-[14px]">
+        {% for p in plugins %}
+        <tr class="hover:bg-surface-hover transition-colors">
+          <td class="py-3.5 pl-5 pr-4">
+            <div class="text-[13px] font-semibold text-ink">{{ p.name }}</div>
+            <div class="text-[11px] text-subtle font-mono">{{ p.code }}</div>
+          </td>
+          <td class="py-3.5 px-4 text-[13px] text-muted font-mono">{{ p.filename }}</td>
+          <td class="py-3.5 px-4 tabular-nums text-[13px] text-muted whitespace-nowrap">
+            {{ p.version }} <span class="text-[11px] text-subtle">API v{{ p.api }}</span>
+          </td>
+          <td class="py-3.5 px-4">
+            {% if not p.error %}
+            {{ m.badge('done', 'Aktif') }}
+            {% else %}
+            {{ m.badge('failed', 'Gagal dimuat') }}
+            <div class="text-[11px] text-danger mt-1 max-w-xs" title="{{ p.error }}">{{ p.error }}</div>
+            {% endif %}
+          </td>
+          <td class="py-3.5 pl-4 pr-5">
+            <div class="flex items-center justify-end gap-1.5">
+              {% if p.code not in builtin_codes %}
+              <button type="button" title="Hapus POS"
+                hx-post="/plugins/{{ p.code }}/delete" hx-target="#plugins-table" hx-swap="outerHTML"
+                hx-confirm="Hapus POS {{ p.name }}? Akun yang memakainya tidak bisa membuat job baru sampai file diimport lagi."
+                class="h-8 w-8 rounded-control border border-hairline text-muted hover:text-danger hover:bg-danger-bg flex items-center justify-center transition-colors cursor-pointer">
+                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+              </button>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="py-14 px-6 text-center">
+    <div class="w-11 h-11 rounded-full bg-hairline-subtle text-muted flex items-center justify-center mx-auto mb-3">
+      <i data-lucide="package-plus" class="w-5 h-5"></i>
+    </div>
+    <h3 class="text-sm font-semibold text-ink">Belum ada POS import</h3>
+    <p class="text-[13px] text-muted mt-1">Import file .py dari developer untuk menambah POS baru.</p>
+  </div>
+  {% endif %}
+</section>

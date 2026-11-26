@@ -8,6 +8,11 @@ from app import browser, db
 from app.errors import CrawlError
 
 
+# Versi kontrak plugin import (app/plugins.py): naikkan bila interface Crawler berubah;
+# file plugin wajib mendeklarasikan PLUGIN_API yang sama.
+PLUGIN_API = 1
+
+
 class CrawlContext:
     """Pegangan page + status DB + event resume selama satu job."""
 
