@@ -114,7 +114,8 @@ Override manual = **Job Baru**.
 Wrapper Electron (`desktop/`) membungkus UI localhost yang ada; sidecar Python dibundle
 PyInstaller onedir + browser Camoufox terbundel — operator tidak perlu install Python/browser.
 
-Build (mesin developer, berurutan):
+Build (mesin developer, berurutan) — panduan lengkap salin-tempel:
+[`BUILD-WINDOWS.md`](BUILD-WINDOWS.md) (Windows) · [`BUILD-MAC.md`](BUILD-MAC.md) (Mac):
 
 ```bash
 python -m pip install pyinstaller

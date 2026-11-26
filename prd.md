@@ -469,6 +469,10 @@ Aturan data:
   tulis `BUILD-MAC.md` — panduan langkah demi langkah build di mesin Mac (Homebrew, Python 3.12,
   Node 22, venv, fetch Camoufox, sidecar, dist:mac, buka Gatekeeper, checklist verifikasi) agar
   owner bisa minta tolong rekan yang punya Mac. CI tetap ada sebagai alternatif.
+- **2026-11-26 — panduan build Windows.** Tulis `BUILD-WINDOWS.md` — panduan langkah demi
+  langkah build installer di Windows (PowerShell: Python 3.12, Node 22, Git, venv, fetch
+  Camoufox, sidecar, dist:win, SmartScreen, checklist verifikasi, troubleshooting) melengkapi
+  `BUILD-MAC.md`. README menautkan keduanya.
 
 ## 13. Acceptance Criteria (observable, per fitur wajib)
 
