@@ -136,9 +136,13 @@ class SiberPosCrawler(Crawler):
             return False
         return self._cf_detected(page) or self._has_widget(page)
 
-    def gate_active(self, page) -> bool:
+    def gate_active(self, page, ctx=None) -> bool:
         """Pause user hanya bila challenge belum lolos: halaman challenge, atau
-        form login dengan widget Turnstile yang belum satisfied."""
+        form login dengan widget Turnstile yang belum satisfied. Sesi yang sudah
+        login (cookie XSRF + bukan halaman login) bukan gate — widget Turnstile sisa
+        di dashboard tidak boleh menahan job (issue: stuck MENUNGGU USER pasca-login)."""
+        if ctx is not None and self._authenticated(ctx):
+            return False
         if self._login_form_visible(page):
             return self._has_widget(page) and not self._satisfied(page)
         return self._is_cf_gate(page)
@@ -323,3 +327,55 @@ class SiberPosCrawler(Crawler):
                     page_n += 1
                 else:
                     break
+
+
+def _self_check() -> None:
+    """Regresi issue stuck MENUNGGU USER pasca-login: widget Turnstile sisa di
+    dashboard bukan gate bila sesi sudah login; challenge/login asli tetap gate."""
+    class Loc:
+        def __init__(self, n): self._n = n
+        @property
+        def first(self): return self
+        def count(self): return self._n
+
+    class Page:
+        def __init__(self, url, html, pw=0, widget=0, token=""):
+            self.url, self._html, self._pw, self._widget, self._token = url, html, pw, widget, token
+        def content(self): return self._html
+        def locator(self, sel):
+            return Loc(self._pw if "password" in sel else self._widget)
+        def evaluate(self, script, *a):
+            if "cf-turnstile-response" in script: return self._token
+            if "data-state" in script: return False
+            return ""
+
+    class Sess:
+        def __init__(self, xsrf): self._xsrf = xsrf
+        @property
+        def _ctx(self): return self
+        def cookies(self):
+            return [{"name": "XSRF-TOKEN", "value": self._xsrf}] if self._xsrf else []
+
+    class Ctx:
+        def __init__(self, page, xsrf=""): self.page, self.session = page, Sess(xsrf)
+
+    c = SiberPosCrawler()
+    cf_html = "<script src='https://challenges.cloudflare.com/turnstile/v0/api.js'></script>"
+    dash = Page("https://my.siberpos.com/summary/transactions", cf_html, pw=0, widget=1)
+    login = Page("https://my.siberpos.com/login", "<form></form>", pw=1, widget=1)
+    challenge = Page("https://my.siberpos.com/cdn-cgi/challenge-platform/x", "<html>cloudflare</html>", pw=0, widget=1)
+    # dashboard + sesi login -> BUKAN gate (fix issue)
+    assert c.gate_active(dash, Ctx(dash, xsrf="valid")) is False
+    # tanpa sesi, widget di dashboard tetap gate (perilaku lama terjaga)
+    assert c.gate_active(dash, Ctx(dash, xsrf="")) is True
+    # form login dengan widget belum satisfied -> gate
+    assert c.gate_active(login, Ctx(login, xsrf="")) is True
+    # halaman challenge asli -> gate
+    assert c.gate_active(challenge, Ctx(challenge, xsrf="")) is True
+    # tanpa ctx (signature lama) tetap jalan
+    assert c.gate_active(dash) is True
+    print("siberpos gate self_check ok")
+
+
+if __name__ == "__main__":
+    _self_check()

@@ -74,7 +74,7 @@ class MajooCrawler(Crawler):
         except Exception:
             return False
 
-    def gate_active(self, page) -> bool:
+    def gate_active(self, page, ctx=None) -> bool:
         if "/auth/login" not in (page.url or ""):
             return browser.is_gated(page)
         return self._has_widget(page) and not self._turnstile_token(page)

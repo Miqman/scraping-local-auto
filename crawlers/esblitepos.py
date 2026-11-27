@@ -208,7 +208,7 @@ class EsbLitePosCrawler(Crawler):
             pass
         return False
 
-    def gate_active(self, page) -> bool:
+    def gate_active(self, page, ctx=None) -> bool:
         url = (page.url or "").lower()
         if "poslite.esb.co.id" in url and "/login" in url:
             return self._recaptcha_interactive(page)

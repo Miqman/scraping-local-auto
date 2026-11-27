@@ -22,11 +22,13 @@ class CrawlContext:
         self.runner = runner
         self.job_id = job_id
         self.branch_id = None  # None = tahap login / auto-fetch cabang
-        self.gate_fn = gate_fn  # predikat gate khusus POS (mis. token Turnstile)
+        self.gate_fn = gate_fn  # predikat gate khusus POS (mis. token Turnstile); terima (page, ctx)
         self.gate_assist = gate_assist  # auto-click aman selama pause (mis. checkbox Turnstile)
 
     def check_gate(self):
-        gated = self.gate_fn(self.page) if self.gate_fn else browser.is_gated(self.page)
+        # Predikat mengikat ctx: POS bisa tahu sesi sudah login (widget sisa bukan gate).
+        gate_fn = (lambda page: self.gate_fn(page, self)) if self.gate_fn else None
+        gated = gate_fn(self.page) if gate_fn else browser.is_gated(self.page)
         if not gated:
             return
         if self.branch_id is None:
@@ -36,7 +38,7 @@ class CrawlContext:
                 on_wait=lambda: db.set_job_status(self.job_id, "waiting_user"),
                 on_resume=lambda: db.set_job_status(self.job_id, "running"),
                 resume_event=self.runner.resume_event(bid),
-                gate_fn=self.gate_fn,
+                gate_fn=gate_fn,
                 assist_fn=self.gate_assist,
             )
         else:
@@ -46,7 +48,7 @@ class CrawlContext:
                 on_wait=lambda: db.set_branch_status(bid, "waiting_user"),
                 on_resume=lambda: db.set_branch_status(bid, "running"),
                 resume_event=self.runner.resume_event(bid),
-                gate_fn=self.gate_fn,
+                gate_fn=gate_fn,
                 assist_fn=self.gate_assist,
             )
 
